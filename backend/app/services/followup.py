@@ -10,12 +10,7 @@ def answer_question(company: dict, news: dict, analysis: dict, question: str) ->
     if "альфа" in query:
         return _bank(analysis)
     if any(word in query for word in ("бенефициар", "владел", "акционер", "собственник")):
-        return _make(
-            "В профиле нет сведений о бенефициарах, владельцах и акционерах. Восстанавливать их из обезличенных данных нельзя.",
-            "unknown",
-            [f"profile:{company['id']}"],
-            ["Профиль компании"],
-        )
+        return _owners(company)
     if any(word in query for word in ("точно", "гарант", "обязательн", "обруш")):
         unknowns = _section(analysis, "unknowns")["items"]
         extra = " " + unknowns[0]["text"] if unknowns else ""
@@ -87,6 +82,33 @@ def answer_question(company: dict, news: dict, analysis: dict, question: str) ->
         [f"profile:{company['id']}", f"news:{news['id']}"],
         ["Профиль компании", news["title"]],
     )
+
+
+def _owners(company: dict) -> dict:
+    mark = company.get("has_key_owner_mark")
+    persons = company.get("related_persons") or []
+    links = company.get("shared_person_links") or []
+    parts = []
+    if mark is True:
+        parts.append("В датасете есть признак ключевого собственника.")
+    elif mark is False:
+        parts.append("Признак ключевого собственника не установлен.")
+    else:
+        parts.append("Признак ключевого собственника в строке компании не заполнен.")
+    if persons:
+        parts.append(
+            "С компанией связаны обезличенные физлица: "
+            + ", ".join(item["synthetic_f"] for item in persons)
+            + "."
+        )
+    if links:
+        parts.append(
+            "Те же идентификаторы связаны с другими организациями: "
+            + ", ".join(f"{item.get('name')} ({item['synthetic_f']})" for item in links)
+            + "."
+        )
+    parts.append("ФИО, доли и паспортные данные восстановить нельзя: датасет обезличен.")
+    return _make(" ".join(parts), "profile", [f"profile:{company['id']}"], ["Профиль компании"])
 
 
 def _bank(analysis: dict) -> dict:

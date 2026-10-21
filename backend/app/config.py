@@ -4,7 +4,8 @@ from pathlib import Path
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = BACKEND_ROOT.parent
 DATA_DIR = BACKEND_ROOT / "data"
-ANALYSIS_VERSION = "1"
+ANALYSIS_VERSION = "2"
+LARGE_BUSINESS_REVENUE = 15_000_000_000
 
 ALLOWED_MODELS = {
     "gemma 4 26b a4b",

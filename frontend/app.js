@@ -1,10 +1,14 @@
 const state = {
   status: null,
+  users: [],
+  userId: localStorage.getItem("insights-user") || "",
+  home: null,
   companies: [],
+  excluded: [],
   companyId: null,
   company: null,
   briefing: null,
-  view: "feed",
+  screen: "login",
   analysis: null,
   loading: false,
   error: "",
@@ -22,6 +26,7 @@ const KIND = {
   bank: "Аналитика банка",
   action: "Что проверить",
   unknown: "Неизвестно",
+  product: "Продукт банка",
 };
 
 const PROMPTS = [
@@ -66,6 +71,12 @@ function levelClass(level) {
   return "low";
 }
 
+function withUser(url) {
+  if (!state.userId) return url;
+  const join = url.includes("?") ? "&" : "?";
+  return `${url}${join}user_id=${encodeURIComponent(state.userId)}`;
+}
+
 async function getJson(url, options) {
   const response = await fetch(url, options);
   if (!response.ok) {
@@ -76,63 +87,126 @@ async function getJson(url, options) {
   return response.json();
 }
 
+function currentUser() {
+  return state.users.find((item) => item.id === state.userId) || null;
+}
+
 async function init() {
   state.loading = true;
   state.error = "";
   render();
   try {
-    const [status, payload] = await Promise.all([
+    const [status, users, companies] = await Promise.all([
       getJson("/api/status"),
+      getJson("/api/users"),
       getJson("/api/companies"),
     ]);
     state.status = status;
-    state.companies = payload.companies || [];
-    if (!state.companies.length) {
-      state.error = "В загруженных данных нет компаний.";
-      state.loading = false;
-      render();
-      return;
+    state.users = users.users || [];
+    state.companies = companies.companies || [];
+    state.excluded = companies.excluded || [];
+    if (state.userId && state.users.some((item) => item.id === state.userId)) {
+      await enter(state.userId, "home");
+    } else {
+      state.userId = "";
+      state.screen = "login";
     }
-    await selectCompany(state.companies[0].id, false);
   } catch (_error) {
-    state.error = "Не удалось открыть сервис. Проверьте, что приложение запущено.";
+    state.error = "Не удалось открыть интернет-банк. Проверьте, что приложение запущено.";
+  } finally {
     state.loading = false;
     render();
   }
 }
 
-async function selectCompany(id, shouldRenderStart = true) {
+async function enter(userId, screen) {
   const token = ++requestToken;
-  state.companyId = id;
-  state.view = "feed";
-  state.analysis = null;
-  state.answer = null;
-  state.answerError = "";
-  state.question = "";
+  state.userId = userId;
+  localStorage.setItem("insights-user", userId);
   state.loading = true;
   state.error = "";
-  if (shouldRenderStart) render();
+  state.analysis = null;
+  state.answer = null;
+  render();
   try {
-    const [company, briefing] = await Promise.all([
-      getJson(`/api/companies/${id}`),
-      getJson(`/api/companies/${id}/briefing`, { method: "POST" }),
-    ]);
+    const user = state.users.find((item) => item.id === userId);
+    const home = await getJson(`/api/home?user_id=${encodeURIComponent(userId)}`);
     if (token !== requestToken) return;
-    state.company = company;
-    state.briefing = briefing;
+    state.home = home;
+    state.companyId = user.company_id;
+    if (screen === "feed" || state.screen === "feed" || state.screen === "detail") {
+      await loadInsights(false);
+      if (token !== requestToken) return;
+      if (state.screen === "detail" && state.analysis) state.screen = "detail";
+      else state.screen = "feed";
+    } else {
+      state.screen = "home";
+    }
   } catch (_error) {
-    if (token === requestToken) state.error = "Не удалось собрать сводку по этой компании.";
+    if (token === requestToken) state.error = "Не удалось открыть сессию пользователя.";
   } finally {
     if (token === requestToken) {
       state.loading = false;
       render();
     }
   }
+}
+
+async function loadInsights(shouldRender = true) {
+  const token = requestToken;
+  const id = state.companyId;
+  const [company, briefing] = await Promise.all([
+    getJson(`/api/companies/${id}`),
+    getJson(withUser(`/api/companies/${id}/briefing`), { method: "POST" }),
+  ]);
+  if (token !== requestToken) return;
+  state.company = company;
+  state.briefing = briefing;
+  if (shouldRender) render();
+}
+
+async function openHome() {
+  state.screen = "home";
+  state.analysis = null;
+  render();
+  window.scrollTo(0, 0);
+}
+
+async function openInsights() {
+  const token = ++requestToken;
+  state.screen = "feed";
+  state.analysis = null;
+  state.answer = null;
+  state.loading = true;
+  state.error = "";
+  render();
+  window.scrollTo(0, 0);
+  try {
+    await loadInsights(false);
+  } catch (_error) {
+    if (token === requestToken) state.error = "Не удалось собрать сводку.";
+  } finally {
+    if (token === requestToken) {
+      state.loading = false;
+      render();
+    }
+  }
+}
+
+async function selectCompany(id) {
+  const user = state.users.find((item) => item.company_id === id && item.role === (currentUser()?.role || "генеральный директор"))
+    || state.users.find((item) => item.company_id === id);
+  if (!user) {
+    state.error = "Для этой компании нет тестовой учетной записи.";
+    render();
+    return;
+  }
+  await enter(user.id, "feed");
 }
 
 async function openNews(id) {
   const token = ++requestToken;
-  state.view = "detail";
+  state.screen = "detail";
   state.analysis = null;
   state.answer = null;
   state.answerError = "";
@@ -142,13 +216,11 @@ async function openNews(id) {
   render();
   window.scrollTo(0, 0);
   try {
-    const analysis = await getJson(`/api/companies/${state.companyId}/news/${id}`);
-    if (token !== requestToken) return;
-    state.analysis = analysis;
+    state.analysis = await getJson(withUser(`/api/companies/${state.companyId}/news/${id}`));
   } catch (_error) {
     if (token !== requestToken) return;
     state.error = "Не удалось открыть разбор события.";
-    state.view = "feed";
+    state.screen = "feed";
   } finally {
     if (token === requestToken) {
       state.loading = false;
@@ -157,14 +229,26 @@ async function openNews(id) {
   }
 }
 
-function back() {
+function backToFeed() {
   requestToken += 1;
-  state.view = "feed";
+  state.screen = "feed";
   state.analysis = null;
   state.answer = null;
   state.error = "";
   render();
   window.scrollTo(0, 0);
+}
+
+function logout() {
+  requestToken += 1;
+  localStorage.removeItem("insights-user");
+  state.userId = "";
+  state.home = null;
+  state.company = null;
+  state.briefing = null;
+  state.analysis = null;
+  state.screen = "login";
+  render();
 }
 
 async function submitQuestion(question) {
@@ -181,7 +265,7 @@ async function submitQuestion(question) {
   render();
   try {
     state.answer = await getJson(
-      `/api/companies/${state.companyId}/news/${state.analysis.news_id}/questions`,
+      withUser(`/api/companies/${state.companyId}/news/${state.analysis.news_id}/questions`),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -197,44 +281,87 @@ async function submitQuestion(question) {
 }
 
 function render() {
-  const mode = state.status;
+  const user = currentUser();
   app.replaceChildren(
     h("div", { class: "app" }, [
-      h("header", { class: "topbar" }, [
-        h("div", { class: "brand" }, [
-          h("div", { class: "logo" }, ["И"]),
-          h("div", {}, [
-            h("h1", {}, ["Бизнес-инсайты"]),
-            h("p", {}, ["События и их значение для компании"]),
-          ]),
-        ]),
-        h("div", { class: "pills" }, mode ? [
-          h("span", { class: "pill" }, [mode.news_mode === "mixed" ? "Демо и внешняя лента" : "Демонстрационные сюжеты"]),
-          h("span", { class: "pill" }, [mode.llm_mode === "live" ? `Модель: ${mode.llm_model}` : "Модель не подключена"]),
-        ] : []),
-      ]),
+      topbar(user),
+      state.userId ? persistentEntry() : null,
       h("p", { class: "banner" }, [
-        mode?.llm_note || "Материалы с пометкой «демо» подготовлены для сценария и не являются сообщениями СМИ или аналитикой банка.",
+        state.status?.data_note || "Демонстрационный контур интернет-банка. Это не промышленный Альфа-Бизнес.",
       ]),
       h("div", { class: "layout" }, [
-        sidebar(),
+        state.screen === "login" ? null : sidebar(),
         h("main", { class: "main" }, mainBlocks()),
       ]),
     ]),
   );
 }
 
-function sidebar() {
-  return h("aside", { class: "sidebar" }, state.companies.map((company) =>
-    h("button", {
-      class: `company${company.id === state.companyId ? " active" : ""}`,
-      type: "button",
-      onclick: () => selectCompany(company.id),
-    }, [
-      h("strong", {}, [company.name]),
-      h("span", {}, [[company.industry, company.city].filter(Boolean).join(" · ") || "Мало данных о компании"]),
+function topbar(user) {
+  return h("header", { class: "topbar" }, [
+    h("div", { class: "brand" }, [
+      h("div", { class: "logo" }, ["А"]),
+      h("div", {}, [
+        h("h1", {}, ["Альфа-Бизнес"]),
+        h("p", {}, ["Интернет-банк · демо-контур крупного бизнеса"]),
+      ]),
     ]),
-  ));
+    user ? h("nav", { class: "nav" }, [
+      h("button", { class: `nav-btn${state.screen === "home" ? " active" : ""}`, type: "button", onclick: openHome }, ["Главная"]),
+      h("button", { class: `nav-btn insights${state.screen === "feed" || state.screen === "detail" ? " active" : ""}`, type: "button", onclick: openInsights }, ["Инсайты"]),
+    ]) : null,
+    h("div", { class: "pills" }, [
+      ...(state.status ? [
+        h("span", { class: "pill" }, [state.status.news_mode === "mixed" ? "Демо и внешняя лента" : "Синтетические сюжеты"]),
+        h("span", { class: "pill" }, [state.status.llm_mode === "live" ? `Модель: ${state.status.llm_model}` : "Модель не подключена"]),
+      ] : []),
+      user ? h("span", { class: "pill" }, [user.display_name]) : null,
+      user ? h("button", { class: "ghost", type: "button", onclick: logout }, ["Сменить пользователя"]) : null,
+    ]),
+  ]);
+}
+
+function persistentEntry() {
+  if (state.screen === "feed" || state.screen === "detail") return null;
+  return h("button", { class: "entry-bar", type: "button", onclick: openInsights }, [
+    h("strong", {}, ["Новостная аналитика"]),
+    h("span", {}, ["Постоянная точка входа: события, факты, позиция банка и выводы AI"]),
+  ]);
+}
+
+function sidebar() {
+  if (state.screen === "home") {
+    const sameCompany = state.users.filter((item) => item.company_id === state.companyId);
+    return h("aside", { class: "sidebar" }, [
+      h("p", { class: "sidebar-label" }, ["Роли этой компании"]),
+      ...sameCompany.map((user) =>
+        h("button", {
+          class: `company${user.id === state.userId ? " active" : ""}`,
+          type: "button",
+          onclick: () => enter(user.id, "home"),
+        }, [
+          h("strong", {}, [user.role]),
+          h("span", {}, [user.display_name]),
+        ]),
+      ),
+    ]);
+  }
+  return h("aside", { class: "sidebar" }, [
+    h("p", { class: "sidebar-label" }, ["Компании крупного бизнеса"]),
+    ...state.companies.map((company) =>
+      h("button", {
+        class: `company${company.id === state.companyId ? " active" : ""}`,
+        type: "button",
+        onclick: () => selectCompany(company.id),
+      }, [
+        h("strong", {}, [company.name]),
+        h("span", {}, [
+          [company.industry, company.city].filter(Boolean).join(" · ")
+          || (company.include_incomplete ? "Неполный профиль" : "Мало данных"),
+        ]),
+      ]),
+    ),
+  ]);
 }
 
 function mainBlocks() {
@@ -249,17 +376,76 @@ function mainBlocks() {
     return [
       h("div", { class: "error" }, [
         h("p", {}, [state.error]),
-        h("button", { class: "primary", type: "button", onclick: () => state.companyId ? selectCompany(state.companyId) : init() }, ["Повторить"]),
+        h("button", { class: "primary", type: "button", onclick: init }, ["Повторить"]),
       ]),
     ];
   }
-  if (state.view === "detail" && state.analysis) return detailBlocks();
+  if (state.screen === "login") return loginBlocks();
+  if (state.screen === "home") return homeBlocks();
+  if (state.screen === "detail" && state.analysis) return detailBlocks();
   return feedBlocks();
+}
+
+function loginBlocks() {
+  const groups = {};
+  state.users.forEach((user) => {
+    groups[user.company_id] = groups[user.company_id] || [];
+    groups[user.company_id].push(user);
+  });
+  return [
+    h("section", { class: "panel" }, [
+      h("h2", {}, ["Вход в демо интернет-банка"]),
+      h("p", { class: "lead" }, ["Сервис создан для людей, а не только для юридического лица. Выберите тестовую учетную запись. Это не промышленная аутентификация Альфа-Банка."]),
+    ]),
+    ...Object.values(groups).map((users) =>
+      h("section", { class: "panel" }, [
+        h("h3", {}, [users[0].company_name || users[0].company_id]),
+        h("div", { class: "user-grid" }, users.map((user) =>
+          h("button", { class: "user-card", type: "button", onclick: () => enter(user.id, "home") }, [
+            h("strong", {}, [user.role]),
+            h("span", {}, [user.display_name]),
+          ]),
+        )),
+      ]),
+    ),
+  ];
+}
+
+function homeBlocks() {
+  const home = state.home;
+  if (!home) return [];
+  return [
+    h("section", { class: "panel" }, [
+      h("h2", {}, [home.company.name]),
+      h("p", { class: "disclaimer" }, [`${home.user.role}. Крупный бизнес в кейсе — выручка свыше 15 млрд ₽.`]),
+      h("dl", { class: "rows" }, [
+        h("dt", {}, ["Отрасль"]), h("dd", {}, [home.company.industry || "нет в данных"]),
+        h("dt", {}, ["Город"]), h("dd", {}, [home.company.city || "нет в данных"]),
+        h("dt", {}, ["Тип клиента"]), h("dd", {}, [home.company.client_type || "нет в данных"]),
+        h("dt", {}, ["Продукты"]), h("dd", {}, [(home.products || []).join(", ") || "нет в данных"]),
+      ]),
+    ]),
+    h("button", { class: "insight-tile", type: "button", onclick: openInsights }, [
+      h("span", { class: "tile-kicker" }, ["Всегда на главной"]),
+      h("h3", {}, [home.entry.title]),
+      h("p", {}, [home.entry.lead]),
+      h("span", { class: "tile-cta" }, ["Открыть инсайты"]),
+    ]),
+    ...(home.accounts || []).map((account) =>
+      h("section", { class: "panel" }, [
+        h("h3", {}, [account.name]),
+        h("p", { class: "note" }, [account.note]),
+      ]),
+    ),
+  ];
 }
 
 function feedBlocks() {
   if (!state.company || !state.briefing) return [];
   const blocks = [profilePanel()];
+  if (state.briefing.user?.role) {
+    blocks.push(h("p", { class: "note" }, [`Сводка собрана для роли: ${state.briefing.user.role}.`]));
+  }
   if (state.briefing.profile_gaps?.length) {
     blocks.push(h("div", { class: "gap-list" }, [
       `В профиле нет: ${state.briefing.profile_gaps.join(", ")}. Эти поля не достраиваются и не участвуют в выводах.`,
@@ -302,7 +488,7 @@ function newsCard(item) {
     h("div", { class: "meta" }, [
       h("span", {}, [formatDate(item.published_at)]),
       h("span", { class: "tag" }, [item.category || "Событие"]),
-      h("span", { class: "tag" }, [item.origin === "rss" ? "Внешняя лента" : "Демо"]),
+      h("span", { class: "tag" }, [item.origin === "rss" ? "Внешняя лента" : "Синтетика"]),
       h("span", { class: `score ${levelClass(level)}` }, [`${percent(item.relevance.score)} · ${level}`]),
     ]),
     h("h3", {}, [item.title]),
@@ -315,7 +501,7 @@ function detailBlocks() {
   const analysis = state.analysis;
   const level = analysis.relevance.level;
   return [
-    h("div", {}, [h("button", { class: "back", type: "button", onclick: back }, ["← К сводке"])]),
+    h("div", {}, [h("button", { class: "back", type: "button", onclick: backToFeed }, ["← К сводке"])]),
     h("section", { class: "panel" }, [
       h("div", { class: "meta" }, [
         h("span", {}, [formatDate(analysis.published_at)]),
@@ -329,6 +515,7 @@ function detailBlocks() {
         h("span", { class: "badge kind-source" }, ["Факт источника"]),
         h("span", { class: "badge kind-bank" }, ["Аналитика банка"]),
         h("span", { class: "badge kind-ai" }, ["Вывод AI"]),
+        h("span", { class: "badge kind-product" }, ["Продукт банка"]),
       ]),
       qualityLine(analysis.quality),
     ]),
@@ -346,7 +533,7 @@ function detailBlocks() {
 function qualityLine(quality) {
   if (!quality) return null;
   const text = quality.revised
-    ? `Проверка скорректировала результат. ${ (quality.fixes || []).join(" ") }`
+    ? `Проверка скорректировала результат. ${(quality.fixes || []).join(" ")}`
     : "Проверка полноты пройдена, правка не понадобилась.";
   return h("p", { class: "note" }, [text]);
 }

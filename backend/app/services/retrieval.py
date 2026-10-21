@@ -1,7 +1,7 @@
 from app.textutil import tokens
 
 
-def search_documents(news: dict, documents: list[dict], limit: int = 2) -> list[dict]:
+def search_documents(news: dict, documents: list[dict], limit: int = 3) -> list[dict]:
     news_topics = set(news.get("topics") or [])
     query = tokens(
         " ".join(
@@ -29,10 +29,11 @@ def search_documents(news: dict, documents: list[dict], limit: int = 2) -> list[
                 "origin": document.get("origin"),
                 "is_bank_research": bool(document.get("is_bank_research")),
                 "source_url": document.get("source_url"),
-                "excerpt": best_text[:500],
+                "excerpt": best_text[:800],
+                "overlap": len(shared),
             }
         )
-    found.sort(key=lambda item: item["id"])
+    found.sort(key=lambda item: (not item["is_bank_research"], -item["overlap"], item["id"]))
     return found[:limit]
 
 

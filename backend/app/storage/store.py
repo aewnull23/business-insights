@@ -45,7 +45,8 @@ class Store:
                     tool TEXT NOT NULL,
                     company_id TEXT,
                     news_id TEXT,
-                    status TEXT NOT NULL
+                    status TEXT NOT NULL,
+                    user_id TEXT
                 );
                 """
             )
@@ -94,13 +95,40 @@ class Store:
             )
             self.conn.commit()
 
-    def add_audit(self, tool: str, company_id: str | None, news_id: str | None, status: str) -> None:
+    def add_audit(
+        self,
+        tool: str,
+        company_id: str | None,
+        news_id: str | None,
+        status: str,
+        user_id: str | None = None,
+    ) -> None:
         with self.lock:
+            columns = {row[1] for row in self.conn.execute("PRAGMA table_info(tool_audit)").fetchall()}
+            if "user_id" not in columns:
+                self.conn.execute("ALTER TABLE tool_audit ADD COLUMN user_id TEXT")
             self.conn.execute(
-                "INSERT INTO tool_audit (ts, tool, company_id, news_id, status) VALUES (?, ?, ?, ?, ?)",
-                (_now(), tool, company_id, news_id, status),
+                "INSERT INTO tool_audit (ts, tool, company_id, news_id, status, user_id) VALUES (?, ?, ?, ?, ?, ?)",
+                (_now(), tool, company_id, news_id, status, user_id),
             )
             self.conn.commit()
+
+    def metrics(self) -> dict:
+        with self.lock:
+            tools = self.conn.execute(
+                "SELECT tool, status, COUNT(*) AS n FROM tool_audit GROUP BY tool, status"
+            ).fetchall()
+            questions = self.conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
+            analyses = self.conn.execute("SELECT COUNT(*) FROM analyses").fetchone()[0]
+            runs = self.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+        return {
+            "runs": runs,
+            "analyses": analyses,
+            "questions": questions,
+            "tool_calls": [
+                {"tool": row["tool"], "status": row["status"], "count": row["n"]} for row in tools
+            ],
+        }
 
     def close(self) -> None:
         with self.lock:

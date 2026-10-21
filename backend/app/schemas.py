@@ -13,6 +13,7 @@ class Fact(BaseModel):
 class Company(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str
+    synthetic_u: str | None = None
     name: str
     demo: bool = True
     disclaimer: str = ""
@@ -21,14 +22,28 @@ class Company(BaseModel):
     okved_name: str | None = None
     revenue_rub: int | None = None
     business_size: str | None = None
+    large_business: bool = False
+    include_incomplete: bool = False
     region: str | None = None
     city: str | None = None
     stage: str | None = None
+    company_age: str | None = None
+    org_type: str | None = None
+    ownership: str | None = None
+    client_type: str | None = None
     employees: int | None = None
+    workers_fns: str | None = None
+    workers_spark: str | None = None
     bank_products: list[str] | None = None
+    has_key_owner_mark: bool | None = None
+    fts_flag: bool | None = None
+    fts_country: str | None = None
     group: dict[str, Any] | None = None
+    related_persons: list[dict[str, Any]] | None = None
+    shared_person_links: list[dict[str, Any]] | None = None
     counterparties: list[dict[str, Any]] | None = None
     payments: dict[str, Any] | None = None
+    source: str | None = None
 
 
 class NewsItem(BaseModel):
@@ -59,5 +74,18 @@ class Document(BaseModel):
     text: str
 
 
+class UserAccount(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    company_id: str
+    role: str
+    display_name: str
+    focus_topics: list[str] = Field(default_factory=list)
+
+
 class QuestionIn(BaseModel):
     question: str = Field(min_length=3, max_length=500)
+
+
+class SessionIn(BaseModel):
+    user_id: str = Field(min_length=2, max_length=64)

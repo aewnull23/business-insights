@@ -241,7 +241,7 @@ def _debt_service(company: dict, news: dict) -> dict:
     level = (news.get("signals") or {}).get("key_rate_level")
     level_note = ""
     if level and level in _blob(news):
-        level_note = f" Уровень {level} в сюжете помечен как учебный и не заменяет решение регулятора."
+        level_note = f" Уровень {level} взят из материала и не заменяет сверку с публикацией регулятора."
     if signal == "unchanged":
         consequence = f"В сюжете ставка не меняется. Для продуктов «{products}» это сохранение текущего ориентира, а не новое ценовое событие.{level_note}"
         risk = "Если ставка в договоре плавающая, уровень из сюжета продолжает относиться к процентным расходам. Тип ставки в договоре не указан."
@@ -520,6 +520,7 @@ def evaluate(company: dict, news: dict) -> list[dict]:
                 "id": rule["id"],
                 "title": rule["title"],
                 "weight": rule["weight"],
+                "topics": list(rule.get("topics_any") or []),
                 "effect": BUILDERS[rule["id"]](company, news),
             }
         )
@@ -527,10 +528,20 @@ def evaluate(company: dict, news: dict) -> list[dict]:
     return fired
 
 
-def score_of(fired: list[dict]) -> float:
+def _boost_for(item: dict, boosts: dict[str, float] | None) -> float:
+    if not boosts:
+        return 1.0
+    matched = [boosts[topic] for topic in item.get("topics") or [] if topic in boosts]
+    if matched:
+        return max(matched)
+    return 0.7
+
+
+def score_of(fired: list[dict], boosts: dict[str, float] | None = None) -> float:
     if not fired:
         return 0.0
-    return round(min(97, sum(item["weight"] for item in fired)) / 100, 2)
+    total = sum(item["weight"] * _boost_for(item, boosts) for item in fired)
+    return round(min(97, total) / 100, 2)
 
 
 def level_of(score: float) -> str:
@@ -541,11 +552,11 @@ def level_of(score: float) -> str:
     return "низкая"
 
 
-def rank_news(company: dict, news_list: list[dict]) -> list[dict]:
+def rank_news(company: dict, news_list: list[dict], boosts: dict[str, float] | None = None) -> list[dict]:
     ranked = []
     for news in news_list:
         fired = evaluate(company, news)
-        score = score_of(fired)
+        score = score_of(fired, boosts)
         if score <= 0:
             continue
         short = ""

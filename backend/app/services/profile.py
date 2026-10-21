@@ -1,3 +1,4 @@
+from app.config import LARGE_BUSINESS_REVENUE
 from app.datasets import load_companies
 from app.textutil import format_int, format_money, format_pct
 
@@ -22,25 +23,48 @@ def core_gaps(company: dict) -> list[str]:
 
 def get_company(company_id: str) -> dict | None:
     for company in load_companies():
-        if company["id"] == company_id:
+        if company["id"] == company_id or company.get("synthetic_u") == company_id:
             return company
     return None
 
 
-def list_public() -> list[dict]:
+def workspace_companies() -> list[dict]:
     result = []
     for company in load_companies():
-        result.append(
-            {
-                "id": company["id"],
-                "name": company["name"],
-                "industry": company.get("industry"),
-                "city": company.get("city"),
-                "business_size": company.get("business_size"),
-                "demo": company.get("demo", True),
-            }
-        )
+        if company.get("large_business") or company.get("include_incomplete"):
+            result.append(_public(company))
     return result
+
+
+def excluded_companies() -> list[dict]:
+    result = []
+    for company in load_companies():
+        if company.get("large_business") or company.get("include_incomplete"):
+            continue
+        if company.get("revenue_rub") is None:
+            continue
+        result.append(_public(company))
+    return result
+
+
+def _public(company: dict) -> dict:
+    return {
+        "id": company["id"],
+        "synthetic_u": company.get("synthetic_u"),
+        "name": company["name"],
+        "industry": company.get("industry"),
+        "city": company.get("city"),
+        "business_size": company.get("business_size"),
+        "large_business": bool(company.get("large_business")),
+        "include_incomplete": bool(company.get("include_incomplete")),
+        "client_type": company.get("client_type"),
+        "demo": company.get("demo", True),
+        "revenue_threshold": LARGE_BUSINESS_REVENUE,
+    }
+
+
+def list_public() -> list[dict]:
+    return workspace_companies()
 
 
 def _products(company: dict) -> str | None:
@@ -56,7 +80,11 @@ def _group(company: dict) -> str | None:
         return None
     role = group.get("role")
     name = group.get("name") or "группа без названия"
-    return f"{name}, {role}" if role else name
+    mates = group.get("mates") or []
+    text = f"{name}, {role}" if role else name
+    if mates:
+        text += "; также в группе: " + ", ".join(item.get("name") or item.get("synthetic_u") for item in mates)
+    return text
 
 
 def _counterparties(company: dict) -> str | None:
@@ -101,26 +129,59 @@ def _okved(company: dict) -> str | None:
     return f"{code} — {name}" if name else code
 
 
+def _owner(company: dict) -> str | None:
+    mark = company.get("has_key_owner_mark")
+    persons = company.get("related_persons") or []
+    if mark is None and not persons:
+        return None
+    bits = []
+    if mark is True:
+        bits.append("есть признак ключевого собственника")
+    elif mark is False:
+        bits.append("признак ключевого собственника не установлен")
+    if persons:
+        bits.append("связанных физлиц: " + ", ".join(item["synthetic_f"] for item in persons))
+    links = company.get("shared_person_links") or []
+    if links:
+        bits.append(
+            "общие физлица с: "
+            + ", ".join(f"{item.get('name')} ({item['synthetic_f']})" for item in links)
+        )
+    bits.append("ФИО и доли не раскрываются: данные обезличены")
+    return "; ".join(bits)
+
+
 def profile_view(company: dict) -> dict:
     rows = [
+        ("Идентификатор датасета", company.get("synthetic_u")),
         ("Отрасль", company.get("industry")),
         ("ОКВЭД", _okved(company)),
+        ("Тип организации", company.get("org_type")),
+        ("Форма собственности", company.get("ownership")),
+        ("Тип клиента", company.get("client_type")),
         ("Размер бизнеса", company.get("business_size")),
         ("Выручка", format_money(company.get("revenue_rub"))),
         ("Регион", company.get("region")),
         ("Город", company.get("city")),
         ("Стадия", company.get("stage")),
+        ("Возраст компании", company.get("company_age")),
         ("Сотрудники", format_int(company.get("employees"))),
+        ("Численность ФНС", company.get("workers_fns")),
+        ("Численность СПАРК", company.get("workers_spark")),
         ("Банковские продукты", _products(company)),
+        ("Внешняя торговля", company.get("fts_country") if company.get("fts_flag") else ("нет отметки ФТС" if company.get("fts_flag") is False else None)),
         ("Группа компаний", _group(company)),
+        ("Связанные лица", _owner(company)),
         ("Контрагенты", _counterparties(company)),
         ("Платежи", _payments(company)),
     ]
     return {
         "id": company["id"],
+        "synthetic_u": company.get("synthetic_u"),
         "name": company["name"],
         "demo": company.get("demo", True),
         "disclaimer": company.get("disclaimer") or "",
+        "large_business": bool(company.get("large_business")),
         "core_gaps": core_gaps(company),
         "rows": [{"label": label, "value": value} for label, value in rows],
         "profile": company,

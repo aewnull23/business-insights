@@ -9,11 +9,23 @@ from app.api.routes import router
 from app.config import settings
 
 LOGGER = logging.getLogger("app")
+DESCRIPTION = """
+Сервис новостной аналитики для руководителей крупного бизнеса в контуре интернет-банка Альфа-Бизнес.
+
+Профили собираются из CSV со схемой приложения 1 кейса. Аналитика банка поднимается только из материалов с признаком `is_bank_research`. Выводы AI отделены от фактов источника.
+"""
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Бизнес-инсайты")
-    app.include_router(router, prefix="/api")
+    app = FastAPI(
+        title="Альфа-Бизнес · Новостная аналитика",
+        description=DESCRIPTION,
+        version="1.1.0",
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
+    )
+    app.include_router(router, prefix="/api", tags=["insights"])
 
     @app.exception_handler(Exception)
     async def unhandled(_request, exc):

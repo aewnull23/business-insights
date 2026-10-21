@@ -7,8 +7,9 @@ from app.providers.llm import complete, llm_status
 from app.services.analysis import build_analysis, origin_label
 from app.services.profile import core_gaps, get_company
 from app.services.quality import narrative_is_grounded
-from app.services.ranking import rank_news
+from app.services.ranking import rank_for
 from app.services.retrieval import search_documents
+from app.services.users import default_user, get_user
 from app.sources.feed import collect_news
 from app import audit
 
@@ -17,25 +18,36 @@ class NotFound(Exception):
     pass
 
 
+class Forbidden(Exception):
+    pass
+
+
 class BriefingAgent:
-    def briefing(self, company_id: str) -> dict:
+    def briefing(self, company_id: str, user_id: str | None = None) -> dict:
         steps = []
+        user = _resolve_user(company_id, user_id)
 
         def mark(title: str, summary: str, tool: str, news_id: str | None = None) -> None:
             steps.append({"title": title, "summary": summary})
-            audit.record(tool, company_id=company_id, news_id=news_id)
+            audit.record(tool, company_id=company_id, news_id=news_id, user_id=None if not user else user["id"])
 
-        mark("Задача определена", "Нужны профиль компании, лента и совпадение признаков.", "define_task")
+        mark("Задача определена", "Нужны профиль компании, лента, роль пользователя и совпадение признаков.", "define_task")
         company = get_company(company_id)
         if not company:
             audit.record("load_profile", company_id=company_id, status="missing")
             raise NotFound(company_id)
         gaps = core_gaps(company)
         mark("Профиль загружен", _gap_summary(gaps), "load_profile")
+        if user:
+            mark(
+                "Роль учтена",
+                f"{user['role']}. Фокус ленты: {', '.join(user.get('focus_topics') or []) or 'без дополнительной надбавки'}.",
+                "load_user",
+            )
         news, dropped, _rss_error = collect_news()
         mark("Лента собрана", f"Материалов до удаления повторов: {len(news) + len(dropped)}.", "collect_news")
         mark("Повторы сняты", f"Убрано близких формулировок: {len(dropped)}.", "deduplicate")
-        ranked = rank_news(company, news)
+        ranked = rank_for(company, news, user)
         if len(ranked) < 1:
             mark(
                 "Повторный отбор",
@@ -47,9 +59,10 @@ class BriefingAgent:
             "run_id": str(uuid.uuid4()),
             "company_id": company["id"],
             "company_name": company["name"],
+            "user": None if not user else {"id": user["id"], "role": user["role"], "display_name": user["display_name"]},
             "notice": (
-                "Порядок сводки — сумма весов сработавших правил. "
-                "Места не разложены заранее по компаниям. Демонстрационные сюжеты не являются сообщениями СМИ."
+                "Порядок сводки — сумма весов правил с надбавкой роли. "
+                "Места не разложены заранее по компаниям. Синтетические сюжеты не являются сообщениями СМИ."
             ),
             "profile_gaps": gaps,
             "duplicates": dropped,
@@ -64,11 +77,13 @@ class BriefingAgent:
         get_store().save_run(payload["run_id"], company_id, payload)
         return payload
 
-    def analyze(self, company_id: str, news_id: str) -> dict:
+    def analyze(self, company_id: str, news_id: str, user_id: str | None = None) -> dict:
         from app.storage.store import get_store
 
+        user = _resolve_user(company_id, user_id)
         store = get_store()
-        cached = store.get_analysis(company_id, news_id, ANALYSIS_VERSION)
+        version = _version(user)
+        cached = store.get_analysis(company_id, news_id, version)
         if cached:
             audit.record("load_analysis", company_id=company_id, news_id=news_id, status="cache")
             return cached
@@ -77,9 +92,9 @@ class BriefingAgent:
 
         def mark(title: str, summary: str, tool: str) -> None:
             steps.append({"title": title, "summary": summary})
-            audit.record(tool, company_id=company_id, news_id=news_id)
+            audit.record(tool, company_id=company_id, news_id=news_id, user_id=None if not user else user["id"])
 
-        mark("Задача определена", "Нужен разбор одного сюжета для выбранной компании.", "define_task")
+        mark("Задача определена", "Нужен разбор одного сюжета для выбранной компании и роли.", "define_task")
         company = get_company(company_id)
         if not company:
             audit.record("load_profile", company_id=company_id, news_id=news_id, status="missing")
@@ -91,12 +106,13 @@ class BriefingAgent:
             raise NotFound(news_id)
         mark("Материал найден", origin_label(news), "collect_news")
         documents = search_documents(news, list(load_documents()))
+        bank_hits = sum(1 for item in documents if item.get("is_bank_research"))
         mark(
             "Документы отобраны",
-            f"Фрагментов библиотеки: {len(documents)}. Аналитика банка помечается только если у документа есть соответствующий признак.",
+            f"Фрагментов библиотеки: {len(documents)}, из них аналитика банка: {bank_hits}.",
             "retrieve_documents",
         )
-        view = build_analysis(company, news, documents)
+        view = build_analysis(company, news, documents, user)
         mark("Черновик собран", f"Сработало правил: {len(view['relevance']['reasons'])}.", "draft_analysis")
         if view["quality"]["revised"]:
             mark("Проверка полноты", "Черновику не хватало оговорки или источник был размечен слишком сильно.", "quality_check")
@@ -107,10 +123,10 @@ class BriefingAgent:
         mark("Формулировка", note, "narrate" if accepted else "narrate_skipped")
         mark("Результат сохранен", "Разбор и след записаны локально.", "save")
         view["trace"] = steps
-        store.save_analysis(company_id, news_id, ANALYSIS_VERSION, view)
+        store.save_analysis(company_id, news_id, version, view)
         return view
 
-    def ask(self, company_id: str, news_id: str, question: str) -> dict:
+    def ask(self, company_id: str, news_id: str, question: str, user_id: str | None = None) -> dict:
         from app.services.followup import answer_question
 
         company = get_company(company_id)
@@ -118,13 +134,30 @@ class BriefingAgent:
         if not company or not news:
             audit.record("ask", company_id=company_id, news_id=news_id, status="missing")
             raise NotFound(company_id if not company else news_id)
-        analysis = self.analyze(company_id, news_id)
+        analysis = self.analyze(company_id, news_id, user_id)
         answer = answer_question(company, news, analysis, question)
         audit.record("ask", company_id=company_id, news_id=news_id, status=answer["kind"])
         from app.storage.store import get_store
 
         get_store().save_question(company_id, news_id, question, answer)
         return answer
+
+
+def _resolve_user(company_id: str, user_id: str | None) -> dict | None:
+    if user_id:
+        user = get_user(user_id)
+        if not user:
+            raise NotFound(user_id)
+        if user["company_id"] != company_id:
+            raise Forbidden(user_id)
+        return user
+    return default_user(company_id)
+
+
+def _version(user: dict | None) -> str:
+    if not user:
+        return ANALYSIS_VERSION
+    return f"{ANALYSIS_VERSION}:{user['id']}"
 
 
 def _find_news(news_id: str) -> dict | None:

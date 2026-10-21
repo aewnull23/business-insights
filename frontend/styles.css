@@ -4,9 +4,9 @@
   --ink: #161616;
   --muted: #5e615c;
   --line: #e4e2dc;
-  --red: #e31c23;
+  --red: #ef3124;
   --red-soft: #fdeceb;
-  --high: #e31c23;
+  --high: #ef3124;
   --mid: #8a5a12;
   --low: #5e615c;
   --source: #f6f6f4;
@@ -19,6 +19,8 @@
   --ai-ink: #7a5410;
   --bank: #e8f0fa;
   --bank-ink: #1a4578;
+  --product: #f7eef2;
+  --product-ink: #7a1840;
   --unknown: #f7f7f5;
   --shadow: 0 1px 2px rgba(22, 22, 22, 0.04);
   --serif: "Manrope", "Segoe UI", "Helvetica Neue", sans-serif;
@@ -37,7 +39,6 @@ html, body {
 }
 
 button, textarea { font: inherit; color: inherit; }
-
 button { cursor: pointer; }
 
 button:focus-visible, textarea:focus-visible {
@@ -77,7 +78,23 @@ button:focus-visible, textarea:focus-visible {
 .brand h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
 .brand p { margin: 0; color: #c8c6c1; font-size: 13px; }
 
-.pills { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.nav { display: flex; gap: 8px; }
+
+.nav-btn {
+  border: 1px solid #3a3a3a;
+  background: transparent;
+  color: #eceae4;
+  border-radius: 999px;
+  padding: 6px 14px;
+}
+
+.nav-btn.active, .nav-btn.insights.active {
+  background: var(--red);
+  border-color: var(--red);
+  color: white;
+}
+
+.pills { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
 
 .pill {
   border: 1px solid #3a3a3a;
@@ -86,6 +103,22 @@ button:focus-visible, textarea:focus-visible {
   font-size: 12px;
   color: #eceae4;
 }
+
+.entry-bar {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #f0b8b4;
+  background: #fff4f3;
+  color: #6d1b1e;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: baseline;
+  padding: 12px 28px;
+  text-align: left;
+}
+
+.entry-bar strong { font-size: 15px; }
 
 .banner {
   margin: 0;
@@ -104,7 +137,7 @@ button:focus-visible, textarea:focus-visible {
   margin: 24px auto 48px;
 }
 
-.sidebar, .panel, .card, .claim, .empty, .error, .skeleton {
+.sidebar, .panel, .card, .claim, .empty, .error, .skeleton, .user-card, .insight-tile {
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -112,8 +145,9 @@ button:focus-visible, textarea:focus-visible {
 }
 
 .sidebar { padding: 12px; align-self: start; position: sticky; top: 92px; }
+.sidebar-label { margin: 4px 8px 10px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
 
-.company {
+.company, .user-card {
   width: 100%;
   text-align: left;
   border: 0;
@@ -123,16 +157,19 @@ button:focus-visible, textarea:focus-visible {
   padding: 12px;
 }
 
-.company strong { display: block; font-size: 15px; }
-.company span { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
-
+.company strong, .user-card strong { display: block; font-size: 15px; }
+.company span, .user-card span { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
 .company.active { background: #fafafa; border-left-color: var(--red); }
+
+.user-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 12px; }
+.user-card { border: 1px solid var(--line); background: white; }
 
 .main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 
 .panel { padding: 20px 22px; }
-.panel h2, .card h3, .section h3 { margin: 0; letter-spacing: -0.02em; }
+.panel h2, .card h3, .section h3, .panel h3 { margin: 0; letter-spacing: -0.02em; }
 .panel h2 { font-size: 22px; }
+.panel h3 { font-size: 18px; }
 
 .disclaimer, .muted, .basis, .lead, .note { color: var(--muted); }
 .disclaimer, .note, .lead { font-size: 14px; }
@@ -144,13 +181,23 @@ button:focus-visible, textarea:focus-visible {
 .missing { color: #8a867d; }
 
 .gap-list {
-  margin: 14px 0 0;
+  margin: 0;
   padding: 12px 14px;
   border-radius: 12px;
   background: var(--red-soft);
   color: #6d1b1e;
   font-size: 14px;
 }
+
+.insight-tile {
+  padding: 22px;
+  text-align: left;
+  border-left: 4px solid var(--red);
+}
+
+.tile-kicker { color: var(--red); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.insight-tile h3 { margin: 8px 0; font-size: 22px; }
+.tile-cta { color: var(--red); font-weight: 700; }
 
 .card {
   padding: 18px 18px 16px;
@@ -199,6 +246,7 @@ button:focus-visible, textarea:focus-visible {
 .badge.kind-source { background: #ecece8; color: var(--source-ink); }
 .badge.kind-bank { background: #d5e4f5; color: var(--bank-ink); }
 .badge.kind-ai { background: #f3e4c2; color: var(--ai-ink); }
+.badge.kind-product { background: #f3d7e4; color: var(--product-ink); }
 .kind-source { background: var(--source); border-left-color: #bdbdb6; }
 .kind-source .badge { background: #ecece8; color: var(--source-ink); }
 .kind-confirmed { background: var(--confirmed); border-left-color: var(--confirmed-ink); }
@@ -209,6 +257,8 @@ button:focus-visible, textarea:focus-visible {
 .kind-ai .badge { background: #f3e4c2; color: var(--ai-ink); }
 .kind-bank { background: var(--bank); border-left-color: var(--bank-ink); }
 .kind-bank .badge { background: #d5e4f5; color: var(--bank-ink); }
+.kind-product { background: var(--product); border-left-color: var(--product-ink); }
+.kind-product .badge { background: #f3d7e4; color: var(--product-ink); }
 .kind-action { background: #fff; border-left-color: #111; }
 .kind-action .badge { background: #111; color: white; }
 .kind-unknown { background: var(--unknown); border-style: dashed; border-left-style: dashed; }
@@ -222,6 +272,7 @@ button:focus-visible, textarea:focus-visible {
 }
 
 .primary { background: #111; color: white; border-color: #111; }
+.ghost { background: transparent; color: #eceae4; border-color: #3a3a3a; }
 .back { padding-left: 0; border: 0; background: transparent; color: var(--red); font-weight: 700; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -258,10 +309,12 @@ button:focus-visible, textarea:focus-visible {
 .legend span { font-size: 12px; border-radius: 999px; padding: 3px 8px; }
 
 @media (max-width: 860px) {
-  .topbar, .banner { padding-left: 16px; padding-right: 16px; }
+  .topbar, .banner, .entry-bar { padding-left: 16px; padding-right: 16px; }
   .layout { grid-template-columns: 1fr; width: min(1180px, calc(100% - 24px)); }
   .sidebar { position: static; display: flex; gap: 8px; overflow-x: auto; }
-  .company { min-width: 220px; }
+  .company, .user-card { min-width: 220px; }
   .rows { grid-template-columns: 1fr; gap: 2px; }
   .rows dd { margin-bottom: 10px; }
+  .nav { order: 3; width: 100%; }
+  .topbar { flex-wrap: wrap; }
 }

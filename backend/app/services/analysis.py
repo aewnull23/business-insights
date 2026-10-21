@@ -1,6 +1,8 @@
 from app.services.impact import evaluate, level_of, score_of
+from app.services.products import suggest_products
 from app.services.quality import check, repair, safe_fallback
 from app.services.retrieval import BANK_ABSENT
+from app.services.users import topic_boosts
 
 BUCKETS = (
     ("attributes", "profile"),
@@ -11,7 +13,7 @@ BUCKETS = (
 )
 
 
-def build_analysis(company: dict, news: dict, documents: list[dict]) -> dict:
+def build_analysis(company: dict, news: dict, documents: list[dict], user: dict | None = None) -> dict:
     fired = evaluate(company, news)
     draft = _draft(company, news, documents, fired)
     issues = check(draft)
@@ -24,7 +26,7 @@ def build_analysis(company: dict, news: dict, documents: list[dict]) -> dict:
         if check(draft):
             draft = safe_fallback(draft)
             fixes.append("Повторная проверка сняла оставшиеся слабые формулировки.")
-    view = _present(company, news, draft, fired)
+    view = _present(company, news, draft, fired, user)
     view["quality"] = {"passed": True, "revised": revised, "fixes": fixes}
     return view
 
@@ -53,9 +55,10 @@ def _draft(company: dict, news: dict, documents: list[dict], fired: list[dict]) 
         "actions": [],
         "unknowns": [],
         "documents": library,
+        "products": suggest_products(company, news),
         "bank": {
             "found": bool(bank_docs),
-            "message": "Найден материал, помеченный как аналитика банка." if bank_docs else BANK_ABSENT,
+            "message": "Найден материал аналитики Альфа-Банка из контура приложения 2." if bank_docs else BANK_ABSENT,
             "items": [
                 {
                     "text": document["excerpt"],
@@ -99,7 +102,7 @@ def _draft(company: dict, news: dict, documents: list[dict], fired: list[dict]) 
     return draft
 
 
-def _present(company: dict, news: dict, draft: dict, fired: list[dict]) -> dict:
+def _present(company: dict, news: dict, draft: dict, fired: list[dict], user: dict | None = None) -> dict:
     sources = _sources(company, news, draft, fired)
     titles = {item["id"]: item["title"] for item in sources}
 
@@ -120,11 +123,12 @@ def _present(company: dict, news: dict, draft: dict, fired: list[dict]) -> dict:
 
     document_items = []
     for document in draft["documents"]:
-        note = (
-            "Демонстрационная справка. Не является аналитикой Альфа-Банка."
-            if document.get("origin") == "demonstration"
-            else "Фрагмент из подключенной библиотеки."
-        )
+        if document.get("is_bank_research"):
+            note = "Материал аналитики банка по приложению 2 кейса. Полный PDF в пакете отсутствовал; карточка собрана по названию и формулировкам файла кейса."
+        elif document.get("origin") == "demonstration":
+            note = "Демонстрационная справка. Не является аналитикой Альфа-Банка."
+        else:
+            note = "Фрагмент из подключенной библиотеки."
         document_items.append(
             {
                 "text": document["excerpt"],
@@ -136,7 +140,7 @@ def _present(company: dict, news: dict, draft: dict, fired: list[dict]) -> dict:
             }
         )
     bank_items = show(draft["bank"]["items"])
-    score = score_of(fired)
+    score = score_of(fired, topic_boosts(user))
     return {
         "company_id": company["id"],
         "news_id": news["id"],
@@ -184,7 +188,14 @@ def _present(company: dict, news: dict, draft: dict, fired: list[dict]) -> dict:
             _section("risks", "Риски", show(draft["risks"])),
             _section("opportunities", "Возможности", show(draft["opportunities"]), "Явной возможности, которая следует из профиля и сюжета, нет."),
             _section("actions", "Что можно проверить", show(draft["actions"])),
-            _section("bank", "Аналитика Альфа-Банка", bank_items, draft["bank"]["message"] if not draft["bank"]["found"] else None),
+            _section(
+                "products",
+                "Предложения продуктов банка",
+                show(draft.get("products") or []),
+                "Для этого сочетания профиля и сюжета отдельное продуктовое предложение не формируется.",
+                "Нативная реклама отделена от аналитики банка и от выводов AI.",
+            ),
+            _section("bank", "Как это оценивает банк", bank_items, draft["bank"]["message"] if not draft["bank"]["found"] else None),
             _section("documents", "Найденные аналитические материалы", document_items, "В библиотеке нет фрагмента по теме этого сюжета."),
             _section("unknowns", "Что остается неизвестным", [
                 {"text": text, "kind": "unknown", "basis": [], "basis_labels": [], "title": None, "note": None}
@@ -193,6 +204,9 @@ def _present(company: dict, news: dict, draft: dict, fired: list[dict]) -> dict:
         ],
         "sources": sources,
         "bank_found": draft["bank"]["found"],
+        "user": None
+        if not user
+        else {"id": user["id"], "role": user["role"], "display_name": user["display_name"]},
     }
 
 
