@@ -2,7 +2,7 @@ import re
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.datasets import load_companies, load_documents, load_fid_rows, load_pay_rows, load_uid_rows
+from app.datasets import dataset_counts, load_companies, load_documents, load_fid_rows, load_pay_rows, load_uid_rows
 from app.providers.llm import llm_status
 from app.schemas import QuestionIn
 from app.services.agent import BriefingAgent, Forbidden, NotFound
@@ -11,7 +11,7 @@ from app.services.users import get_user, home_view, list_users
 from app.sources.feed import collect_news
 from app.storage.store import get_store
 
-ID_RE = re.compile(r"^[a-z0-9-]{1,64}$")
+ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 AGENT = BriefingAgent()
 router = APIRouter()
 
@@ -53,7 +53,7 @@ def status() -> dict:
         "uid_rows": len(load_uid_rows()),
         "fid_rows": len(load_fid_rows()),
         "pay_rows": len(load_pay_rows()),
-        "data_note": "Профили собраны из синтетических CSV со схемой приложения 1. Оригинальные выгрузки организаторов в пакете проекта отсутствовали.",
+        "data_note": "Профили собраны из оригинальных df_Uid_data_hack.csv, df_Fid_Uid_link_hack.csv и df_Uid_payment_hack.csv. Названия компаний не раскрываются.",
     }
 
 
@@ -89,11 +89,13 @@ def home(user_id: str = Query(..., min_length=2, max_length=64)) -> dict:
 
 @router.get("/companies")
 def companies() -> dict:
+    counts = dataset_counts()
     return {
         "companies": list_public(),
         "excluded": excluded_companies(),
+        "excluded_total": counts["below"],
         "threshold_rub": 15_000_000_000,
-        "note": "В рабочем контуре крупного бизнеса — компании с выручкой свыше 15 млрд ₽ и явно помеченные неполные профили.",
+        "note": "В рабочем контуре крупного бизнеса — компании с выручкой свыше 15 млрд ₽. Ниже порога показана только короткая выборка, полное число — в excluded_total.",
     }
 
 

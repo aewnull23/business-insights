@@ -1,79 +1,86 @@
 [
   {
     "id": "kama-ceo",
-    "company_id": "kama-metal",
+    "company_id": "u_200890",
     "role": "генеральный директор",
     "display_name": "Демо-пользователь · генеральный директор",
     "focus_topics": ["metal_prices", "auto_production", "regional_logistics"]
   },
   {
     "id": "kama-cfo",
-    "company_id": "kama-metal",
+    "company_id": "u_200890",
     "role": "финансовый директор",
     "display_name": "Демо-пользователь · финансовый директор",
     "focus_topics": ["key_rate", "fx_cny", "group_treasury", "tax_admin"]
   },
   {
     "id": "kama-treasury",
-    "company_id": "kama-metal",
+    "company_id": "u_200890",
     "role": "руководитель казначейства",
     "display_name": "Демо-пользователь · казначейство",
     "focus_topics": ["key_rate", "group_treasury"]
   },
   {
     "id": "kama-accountant",
-    "company_id": "kama-metal",
+    "company_id": "u_200890",
     "role": "главный бухгалтер",
     "display_name": "Демо-пользователь · главный бухгалтер",
     "focus_topics": ["tax_admin"]
   },
   {
     "id": "kama-owner",
-    "company_id": "kama-metal",
+    "company_id": "u_200890",
     "role": "собственник бизнеса",
     "display_name": "Демо-пользователь · собственник",
     "focus_topics": ["group_treasury", "tax_admin"]
   },
   {
     "id": "shop-ceo",
-    "company_id": "gorodskaya-polka",
+    "company_id": "u_1595",
     "role": "генеральный директор",
     "display_name": "Демо-пользователь · генеральный директор",
     "focus_topics": ["retail_demand", "acquiring"]
   },
   {
+    "id": "shop-treasury",
+    "company_id": "u_1595",
+    "role": "руководитель казначейства",
+    "display_name": "Демо-пользователь · казначейство розницы",
+    "focus_topics": ["key_rate", "group_treasury"]
+  },
+  {
     "id": "agro-ceo",
-    "company_id": "pole-i-zerno",
+    "company_id": "u_177693",
     "role": "генеральный директор",
     "display_name": "Демо-пользователь · генеральный директор",
     "focus_topics": ["grain_export", "weather"]
   },
   {
     "id": "log-ceo",
-    "company_id": "nevskaya-logistika",
+    "company_id": "u_3263",
     "role": "генеральный директор",
     "display_name": "Демо-пользователь · генеральный директор",
     "focus_topics": ["fuel", "leasing"]
   },
   {
     "id": "soft-ceo",
-    "company_id": "kontur-soft",
+    "company_id": "u_44792",
     "role": "генеральный директор",
     "display_name": "Демо-пользователь · генеральный директор",
     "focus_topics": ["labor_it", "it_demand"]
   },
   {
     "id": "sparse-ceo",
-    "company_id": "severny-eskiz",
+    "company_id": "u_67",
     "role": "генеральный директор",
-    "display_name": "Демо-пользователь · неполный профиль",
+    "display_name": "Демо-пользователь · компания ниже порога",
     "focus_topics": []
   },
   {
     "id": "prokat-ceo",
-    "company_id": "severny-prokat",
+    "company_id": "u_19717",
     "role": "генеральный директор",
-    "display_name": "Демо-пользователь · компания группы",
-    "focus_topics": ["metal_prices", "group_treasury"]
+    "display_name": "Демо-пользователь · розница топлива",
+    "focus_topics": ["retail_demand", "fuel"]
   }
 ]

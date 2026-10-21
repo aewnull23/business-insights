@@ -1,5 +1,5 @@
 from app.config import LARGE_BUSINESS_REVENUE
-from app.datasets import load_companies
+from app.datasets import company_by_id, excluded_preview, load_companies
 from app.textutil import format_int, format_money, format_pct
 
 CORE_GAP_FIELDS = (
@@ -22,10 +22,7 @@ def core_gaps(company: dict) -> list[str]:
 
 
 def get_company(company_id: str) -> dict | None:
-    for company in load_companies():
-        if company["id"] == company_id or company.get("synthetic_u") == company_id:
-            return company
-    return None
+    return company_by_id(company_id)
 
 
 def workspace_companies() -> list[dict]:
@@ -37,14 +34,7 @@ def workspace_companies() -> list[dict]:
 
 
 def excluded_companies() -> list[dict]:
-    result = []
-    for company in load_companies():
-        if company.get("large_business") or company.get("include_incomplete"):
-            continue
-        if company.get("revenue_rub") is None:
-            continue
-        result.append(_public(company))
-    return result
+    return list(excluded_preview())
 
 
 def _public(company: dict) -> dict:

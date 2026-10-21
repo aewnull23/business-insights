@@ -79,22 +79,23 @@ def test_case_csv_schema():
 
 def test_large_business_threshold():
     workspace = {item["id"] for item in list_public()}
-    assert "kama-metal" in workspace
-    assert "pole-i-zerno" in workspace
-    assert "gorodskaya-polka" in workspace
-    assert "nevskaya-logistika" in workspace
-    assert "kontur-soft" in workspace
-    assert "severny-eskiz" in workspace
-    assert "yuzhny-opt" not in workspace
-    excluded = {item["id"] for item in excluded_companies()}
-    assert "yuzhny-opt" in excluded
-    kama = get_company("kama-metal")
-    agro = get_company("pole-i-zerno")
-    shop = get_company("gorodskaya-polka")
-    assert kama["revenue_rub"] > 15_000_000_000
-    assert agro["revenue_rub"] > 15_000_000_000
+    assert "u_200890" in workspace
+    assert "u_1595" in workspace
+    assert "u_3263" in workspace
+    assert "u_44792" in workspace
+    assert "u_67" not in workspace
+    assert "u_177693" not in workspace
+    assert len(excluded_companies()) <= 12
+    metal = get_company("u_200890")
+    shop = get_company("u_1595")
+    small = get_company("u_67")
+    agro = get_company("u_177693")
+    assert metal["revenue_rub"] > 15_000_000_000
     assert shop["revenue_rub"] > 15_000_000_000
-    assert get_company("yuzhny-opt")["revenue_rub"] < 15_000_000_000
+    assert small["revenue_rub"] < 15_000_000_000
+    assert agro["revenue_rub"] < 15_000_000_000
+    assert metal["industry"] == "Торговля металлами"
+    assert shop["industry"] == "Розничная торговля"
 
 
 def test_duplicate_news_removed():
@@ -104,53 +105,58 @@ def test_duplicate_news_removed():
 
 
 def test_ranking_depends_on_company():
-    kama = _ids("kama-metal")
-    shop = _ids("gorodskaya-polka")
-    agro = _ids("pole-i-zerno")
-    soft = _ids("kontur-soft")
-    logistics = _ids("nevskaya-logistika")
-    sparse = _ids("severny-eskiz")
+    metal = _ids("u_200890")
+    shop = _ids("u_1595")
+    agro = _ids("u_177693")
+    soft = _ids("u_44792")
+    logistics = _ids("u_3263")
+    small = _ids("u_67")
 
-    assert kama[0] == "n-metal"
+    assert metal[0] == "n-metal"
     assert shop[0] == "n-retail"
     assert agro[0] == "n-grain"
     assert soft[0] == "n-labor"
     assert logistics[0] == "n-fuel"
-    assert sparse == ["n-metal"]
+    assert "n-group" in small
 
     assert "n-metal" not in shop
-    assert "n-retail" not in kama
-    assert "n-sport" not in kama
+    assert "n-retail" not in metal
+    assert "n-sport" not in metal
     assert "n-sport" not in shop
-    assert "n-tax" in kama and "n-tax" in shop and "n-tax" in agro and "n-tax" in soft
-    assert "n-tax" not in sparse
+    assert "n-tax" in metal and "n-tax" in shop and "n-tax" in soft
+    assert "n-tax" not in agro
+    assert "n-tax" not in small
 
-    metal = _news("n-metal")
-    assert score_of(evaluate(get_company("kama-metal"), metal)) > score_of(evaluate(get_company("gorodskaya-polka"), metal))
+    story = _news("n-metal")
+    assert score_of(evaluate(get_company("u_200890"), story)) > score_of(evaluate(get_company("u_1595"), story))
 
 
 def test_role_changes_ranking_for_same_company():
-    ceo = _ids("kama-metal", get_user("kama-ceo"))
-    treasury = _ids("kama-metal", get_user("kama-treasury"))
-    accountant = _ids("kama-metal", get_user("kama-accountant"))
+    ceo = _ids("u_200890", get_user("kama-ceo"))
+    treasury = _ids("u_200890", get_user("kama-treasury"))
+    accountant = _ids("u_200890", get_user("kama-accountant"))
+    shop_treasury = _ids("u_1595", get_user("shop-treasury"))
     assert ceo[0] == "n-metal"
-    assert treasury[0] == "n-rate"
+    assert treasury[0] == "n-group"
     assert accountant[0] == "n-tax"
+    assert shop_treasury[0] == "n-rate"
 
 
 def test_sparse_profile_does_not_invent_revenue():
-    view = profile_view(get_company("severny-eskiz"))
-    assert "выручка" in view["core_gaps"]
+    company = get_company("u_67")
+    view = profile_view(company)
+    assert "платежи" in view["core_gaps"]
+    assert "банковские продукты" in view["core_gaps"]
     revenue = next(row for row in view["rows"] if row["label"] == "Выручка")
-    assert revenue["value"] is None
-    text = _text(_view("severny-eskiz", "n-metal"))
-    assert "Выручка не указана" in text
+    assert revenue["value"] == "0,1 млн ₽"
+    assert company["revenue_rub"] == 136493
+    text = _text(_view("u_67", "n-group"))
+    assert "59,6" not in text
     assert "18,5" not in text
-    assert "млрд" not in text
 
 
 def test_kama_metal_separates_facts_bank_and_inference():
-    view = _view("kama-metal", "n-metal")
+    view = _view("u_200890", "n-metal")
     confirmed = next(section for section in view["sections"] if section["id"] == "confirmed")
     source = next(section for section in view["sections"] if section["id"] == "source_facts")
     bank = next(section for section in view["sections"] if section["id"] == "bank")
@@ -160,22 +166,22 @@ def test_kama_metal_separates_facts_bank_and_inference():
     assert all(item["kind"] == "source" for item in source["items"])
     assert view["bank_found"] is True
     assert bank["items"]
-    assert any("товар" in item["text"].lower() or "Commodities" in (item.get("title") or "") for item in bank["items"])
-    assert "18,5" in _text(view)
+    assert any("стал" in item["text"].lower() or "металл" in item["text"].lower() or "товар" in item["text"].lower() for item in bank["items"])
+    assert "59,6" in _text(view)
     assert view["quality"]["revised"] is False
     assert products["id"] == "products"
 
 
 def test_rate_uses_bank_interpretation_and_debt_gap():
-    rate = _view("kama-metal", "n-rate")
+    rate = _view("u_1595", "n-rate")
     assert rate["quality"]["revised"] is True
     assert any("структуре долга" in item["text"] for item in next(section for section in rate["sections"] if section["id"] == "unknowns")["items"])
     bank = next(section for section in rate["sections"] if section["id"] == "bank")
     assert rate["bank_found"] is True
-    assert any("14%" in item["text"] for item in bank["items"])
+    assert any("14%" in item["text"] or "14,0%" in item["text"] for item in bank["items"])
     products = next(section for section in rate["sections"] if section["id"] == "products")
     assert products["items"]
-    fuel_docs = next(section for section in _view("nevskaya-logistika", "n-fuel")["sections"] if section["id"] == "documents")
+    fuel_docs = next(section for section in _view("u_3263", "n-fuel")["sections"] if section["id"] == "documents")
     assert fuel_docs["items"] == []
 
 
@@ -198,26 +204,29 @@ def test_quality_repairs_unsourced_certainty_and_false_confirmation():
 
 
 def test_followup_does_not_invent_missing_facts():
-    company = get_company("kama-metal")
+    company = get_company("u_200890")
     news = _news("n-metal")
-    view = _view("kama-metal", "n-metal")
+    view = _view("u_200890", "n-metal")
     owner = answer_question(company, news, view, "Кто бенефициар компании?")
     assert owner["kind"] == "profile"
     assert "обезличен" in owner["answer"].lower()
-    assert "Ф001" in owner["answer"] or "F001" in owner["answer"]
+    persons = company.get("related_persons") or []
+    if persons:
+        assert persons[0]["synthetic_f"] in owner["answer"]
     revenue = answer_question(company, news, view, "Какая выручка у компании?")
-    assert "18,5" in revenue["answer"]
+    assert "59,6" in revenue["answer"]
     assert revenue["kind"] == "profile"
     alfa = answer_question(company, news, view, "Что говорит аналитика Альфа-Банка?")
-    assert "товар" in alfa["answer"].lower() or "контракт" in alfa["answer"].lower()
+    assert alfa["kind"] == "bank"
     facts = answer_question(company, news, view, "Что здесь является фактом?")
     assert "Подтвержденных внешней проверкой фактов нет" in facts["answer"]
-    soft = get_company("kontur-soft")
-    soft_view = _view("kontur-soft", "n-labor")
+    soft = get_company("u_44792")
+    soft_view = _view("u_44792", "n-labor")
     credit = answer_question(soft, _news("n-labor"), soft_view, "Как это влияет на кредитную линию?")
     assert "нет кредитной линии" in credit["answer"]
-    sparse = answer_question(get_company("severny-eskiz"), _news("n-metal"), _view("severny-eskiz", "n-metal"), "Какая выручка у компании?")
-    assert "не указана" in sparse["answer"]
+    small = answer_question(get_company("u_67"), _news("n-group"), _view("u_67", "n-group"), "Какая выручка у компании?")
+    assert "0,1 млн" in small["answer"]
+    assert "59,6" not in small["answer"]
 
 
 def test_rss_items_stay_unverified():

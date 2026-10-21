@@ -9,7 +9,7 @@ from app.textutil import format_int, format_money, format_pct
 CREDIT_PRODUCTS = ("кредитная линия", "овердрафт", "кредит")
 
 RULES = [
-    {"id": "metal_revenue", "title": "Цена стали и отрасль", "weight": 46, "topics_any": ["metal_prices"], "industries_any": ["Металлургия"]},
+    {"id": "metal_revenue", "title": "Цена стали и отрасль", "weight": 46, "topics_any": ["metal_prices"], "industries_any": ["Металлургия", "Торговля металлами"]},
     {"id": "metal_scrap", "title": "Сырьевой канал лома", "weight": 12, "topics_any": ["metal_prices"], "counterparty_keywords_any": ["лом"]},
     {"id": "cny_fx", "title": "Доля юаня в платежах", "weight": 34, "topics_any": ["fx_cny"], "fx_any": ["CNY"], "min_fx_share": 0.05},
     {"id": "cny_export", "title": "Экспорт при сюжете про юань", "weight": 10, "topics_any": ["fx_cny"], "fx_any": ["CNY"], "min_fx_share": 0.05, "min_export_share": 0.1},
