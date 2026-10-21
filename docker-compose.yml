@@ -1,0 +1,8 @@
+services:
+  insights:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: demo
+      LOG_LEVEL: INFO

@@ -1,0 +1,306 @@
+[
+  {
+    "id": "n-metal",
+    "title": "Цены на сталь на внутреннем рынке снизились за месяц",
+    "published_at": "2026-10-14",
+    "category": "Отраслевые рынки",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "В демонстрационном сюжете внутренние цены на сталь за месяц снизились на 6%. Материал не называет производителей и не содержит контрактов выбранной компании.",
+    "topics": ["metal_prices"],
+    "regions": [],
+    "signals": {"metal_prices": "down"},
+    "facts": [
+      {"id": "n-metal-f1", "text": "В демонстрационном сюжете месячное снижение внутренних цен на сталь составляет 6%.", "verification": "demo_source"},
+      {"id": "n-metal-f2", "text": "Сюжет не содержит цен контрактов конкретной компании.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-metal-dup",
+    "title": "Цены на сталь на внутреннем рынке снизились за месяц: краткий обзор",
+    "published_at": "2026-10-14",
+    "category": "Отраслевые рынки",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Краткий повтор сюжета о снижении внутренних цен на сталь.",
+    "topics": ["metal_prices"],
+    "regions": [],
+    "signals": {"metal_prices": "down"},
+    "facts": [
+      {"id": "n-metal-dup-f1", "text": "Повтор сюжета также говорит о снижении внутренних цен на сталь.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-cny",
+    "title": "Курс юаня к рублю заметно колеблется вторую неделю",
+    "published_at": "2026-10-12",
+    "category": "Валютный рынок",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Демонстрационный сюжет описывает повышенную волатильность юаня к рублю. Причина колебания и прогноз курса в материале не установлены.",
+    "topics": ["fx_cny"],
+    "regions": [],
+    "signals": {"fx_cny": "volatile"},
+    "facts": [
+      {"id": "n-cny-f1", "text": "В сюжете зафиксирована повышенная волатильность пары юань-рубль на горизонте двух недель.", "verification": "demo_source"},
+      {"id": "n-cny-f2", "text": "Материал не дает прогноза курса.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-auto",
+    "title": "Выпуск легковых автомобилей в демонстрационном сюжете сократился",
+    "published_at": "2026-10-05",
+    "category": "Спрос",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Сюжет сообщает о снижении выпуска легковых автомобилей на 9% к предыдущему месяцу. Связь с конкретным поставщиком металла в тексте не проводится.",
+    "topics": ["auto_production"],
+    "regions": [],
+    "signals": {"auto_production": "down"},
+    "facts": [
+      {"id": "n-auto-f1", "text": "В сюжете выпуск легковых автомобилей снизился на 9% к предыдущему месяцу.", "verification": "demo_source"},
+      {"id": "n-auto-f2", "text": "Текст не упоминает поставщиков металла по именам.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-rate",
+    "title": "Ключевая ставка в демонстрационном сюжете сохранена",
+    "published_at": "2026-10-16",
+    "category": "Макроэкономика",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "В учебном сюжете регулятор сохраняет ключевую ставку на уровне 16% годовых. Цифра и само решение не являются сверкой с публикацией Банка России.",
+    "topics": ["key_rate"],
+    "regions": [],
+    "signals": {"key_rate": "unchanged", "key_rate_level": "16%"},
+    "facts": [
+      {"id": "n-rate-f1", "text": "В демонстрационном сюжете ключевая ставка сохранена.", "verification": "demo_source"},
+      {"id": "n-rate-f2", "text": "Уровень 16% годовых указан как учебное значение и не подтверждает фактическое решение регулятора.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-tax",
+    "title": "Для крупного бизнеса в сюжете обсуждают дополнительную отчетность",
+    "published_at": "2026-10-06",
+    "category": "Регулирование",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Сюжет описывает гипотетическое обсуждение отчетности для компаний с выручкой от 10 млрд рублей. Это не текст действующего закона.",
+    "topics": ["tax_admin"],
+    "regions": [],
+    "signals": {"tax_admin": "discussed"},
+    "facts": [
+      {"id": "n-tax-f1", "text": "В сюжете порог обсуждаемой отчетности — выручка от 10 млрд рублей.", "verification": "demo_source"},
+      {"id": "n-tax-f2", "text": "Материал не является нормативным актом, и обязанность в нем не введена.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-ekb",
+    "title": "В Свердловской области в сюжете ограничили движение грузовиков",
+    "published_at": "2026-10-11",
+    "category": "Логистика",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Сюжет сообщает о временных ограничениях движения грузовиков в Свердловской области на десять дней. Доля отгрузок конкретной компании по этим маршрутам неизвестна.",
+    "topics": ["regional_logistics"],
+    "regions": ["Свердловская область", "Екатеринбург"],
+    "signals": {"regional_logistics": "restricted"},
+    "facts": [
+      {"id": "n-ekb-f1", "text": "В сюжете движение грузовиков в Свердловской области ограничено на десять дней.", "verification": "demo_source"},
+      {"id": "n-ekb-f2", "text": "Маршруты конкретной компании в материале не указаны.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-group",
+    "title": "В сюжете обсуждают контроль внутригрупповых поручительств",
+    "published_at": "2026-10-01",
+    "category": "Группы компаний",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Сюжет описывает более пристальную проверку внутригрупповых поручительств. Он не утверждает, что такая практика есть у конкретной группы.",
+    "topics": ["group_treasury"],
+    "regions": [],
+    "signals": {"group_treasury": "scrutiny"},
+    "facts": [
+      {"id": "n-group-f1", "text": "Сюжет говорит о более пристальной проверке внутригрупповых поручительств вообще.", "verification": "demo_source"},
+      {"id": "n-group-f2", "text": "Наличие поручительств у конкретной группы в тексте не установлено.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-labor",
+    "title": "В сюжете растет конкуренция за ИТ-специалистов",
+    "published_at": "2026-10-07",
+    "category": "Рынок труда",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Сюжет говорит о росте предлагаемых зарплат ИТ-специалистов на 12% за год. Цифра учебная. Состав персонала компании до ролей в профиле не детализирован.",
+    "topics": ["labor_it"],
+    "regions": [],
+    "signals": {"labor_it": "up"},
+    "facts": [
+      {"id": "n-labor-f1", "text": "В учебном сюжете предлагаемые зарплаты ИТ-специалистов выросли на 12% за год.", "verification": "demo_source"},
+      {"id": "n-labor-f2", "text": "Сюжет не содержит структуры персонала конкретной компании.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-it-demand",
+    "title": "В сюжете корпоративные заказчики откладывают внедрение ПО",
+    "published_at": "2026-10-09",
+    "category": "Отраслевые рынки",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Сюжет сообщает, что часть корпоративных заказчиков сдвигает проекты внедрения ПО на следующий квартал. Доля такой выручки у конкретной компании не выделена.",
+    "topics": ["it_demand"],
+    "regions": [],
+    "signals": {"it_demand": "delayed"},
+    "facts": [
+      {"id": "n-it-f1", "text": "В сюжете часть заказчиков сдвигает проекты внедрения ПО на следующий квартал.", "verification": "demo_source"},
+      {"id": "n-it-f2", "text": "Доля проектной выручки конкретной компании в тексте не названа.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-retail",
+    "title": "В сюжете оборот продовольственной розницы замедлился",
+    "published_at": "2026-10-08",
+    "category": "Спрос",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Сюжет фиксирует замедление оборота продовольственной розницы до 1% в реальном выражении. Цифра учебная и не разбита по сетям.",
+    "topics": ["retail_demand"],
+    "regions": [],
+    "signals": {"retail_demand": "slow"},
+    "facts": [
+      {"id": "n-retail-f1", "text": "В учебном сюжете реальный оборот продовольственной розницы замедлился до 1%.", "verification": "demo_source"},
+      {"id": "n-retail-f2", "text": "Разбивки по торговым сетям в материале нет.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-acquiring",
+    "title": "В сюжете обсуждают комиссию за эквайринг",
+    "published_at": "2026-10-04",
+    "category": "Платежи",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Сюжет описывает обсуждение ограничения комиссии за эквайринг. Решение в материале не принято.",
+    "topics": ["acquiring"],
+    "regions": [],
+    "signals": {"acquiring": "discussed"},
+    "facts": [
+      {"id": "n-acquiring-f1", "text": "В сюжете обсуждают ограничение комиссии за эквайринг.", "verification": "demo_source"},
+      {"id": "n-acquiring-f2", "text": "Решение, которое меняло бы комиссию, в материале не принято.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-grain",
+    "title": "В сюжете ужесточают квоту на экспорт зерна",
+    "published_at": "2026-10-10",
+    "category": "Регулирование",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Сюжет сообщает о более жесткой квоте на экспорт зерна. Объем квоты конкретной компании не назван.",
+    "topics": ["grain_export"],
+    "regions": [],
+    "signals": {"grain_export": "tighter"},
+    "facts": [
+      {"id": "n-grain-f1", "text": "В сюжете квота на экспорт зерна становится жестче.", "verification": "demo_source"},
+      {"id": "n-grain-f2", "text": "Объем квоты конкретной компании не назван.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-drought",
+    "title": "В сюжете на юге фиксируют нехватку влаги",
+    "published_at": "2026-10-03",
+    "category": "Погода",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Сюжет описывает недостаток влаги в Краснодарском крае. Урожайность конкретной компании не оценивается.",
+    "topics": ["weather"],
+    "regions": ["Краснодарский край", "Краснодар"],
+    "signals": {"weather": "dry"},
+    "facts": [
+      {"id": "n-drought-f1", "text": "В сюжете в Краснодарском крае зафиксирован недостаток влаги.", "verification": "demo_source"},
+      {"id": "n-drought-f2", "text": "Урожайность конкретного хозяйства в материале не оценена.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-fuel",
+    "title": "В сюжете дорожает дизельное топливо для перевозчиков",
+    "published_at": "2026-10-09",
+    "category": "Себестоимость",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Сюжет сообщает о росте цены дизеля для коммерческих перевозчиков на 4% за месяц. Цифра учебная. Доля топлива в себестоимости компании в профиле не задана.",
+    "topics": ["fuel"],
+    "regions": [],
+    "signals": {"fuel": "up"},
+    "facts": [
+      {"id": "n-fuel-f1", "text": "В учебном сюжете дизель для коммерческих перевозчиков подорожал на 4% за месяц.", "verification": "demo_source"},
+      {"id": "n-fuel-f2", "text": "Доля топлива в себестоимости конкретной компании в материале не указана.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-leasing",
+    "title": "В сюжете выросли ставки по лизингу техники",
+    "published_at": "2026-10-13",
+    "category": "Финансирование",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Сюжет сообщает о росте предлагаемых ставок лизинга техники. Действующие графики конкретной компании в тексте не рассматриваются.",
+    "topics": ["leasing"],
+    "regions": [],
+    "signals": {"leasing": "up"},
+    "facts": [
+      {"id": "n-leasing-f1", "text": "В сюжете предлагаемые ставки лизинга техники выросли.", "verification": "demo_source"},
+      {"id": "n-leasing-f2", "text": "График лизинга конкретной компании в материале не приведен.", "verification": "demo_source"}
+    ]
+  },
+  {
+    "id": "n-sport",
+    "title": "В сюжете команда выиграла товарищеский матч",
+    "published_at": "2026-10-02",
+    "category": "Прочее",
+    "origin": "demonstration",
+    "demo": true,
+    "source_name": "Демонстрационный сюжет",
+    "source_url": null,
+    "summary": "Спортивный демонстрационный сюжет без экономического содержания. Он нужен, чтобы проверить, что слабая связь не попадает в сводку.",
+    "topics": ["sports"],
+    "regions": [],
+    "signals": {},
+    "facts": [
+      {"id": "n-sport-f1", "text": "В сюжете команда выиграла товарищеский матч.", "verification": "demo_source"}
+    ]
+  }
+]
