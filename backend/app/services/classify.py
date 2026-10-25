@@ -1,6 +1,8 @@
+import re
+
+
 TOPIC_KEYWORDS = (
-    ("key_rate", ("ключев", "ставк")),
-    ("metal_prices", ("стал", "металлург")),
+    ("metal_prices", ("сталь", "металлург", "прокат")),
     ("fx_cny", ("юан",)),
     ("auto_production", ("автомобил",)),
     ("tax_admin", ("отчетн", "отчётност")),
@@ -23,4 +25,8 @@ def classify_topics(text: str, existing: list[str] | None = None) -> list[str]:
         return list(existing)
     lowered = (text or "").lower().replace("ё", "е")
     found = [topic for topic, keys in TOPIC_KEYWORDS if any(key in lowered for key in keys)]
+    if re.search(r'цен[^.!?]{0,35}стали', lowered) and 'metal_prices' not in found:
+        found.append('metal_prices')
+    if re.search(r'ключев\w* ставк|(?:банк росси|цб рф)[^.!?]{0,80}ставк', lowered) and 'key_rate' not in found:
+        found.append('key_rate')
     return found or ["unclassified"]

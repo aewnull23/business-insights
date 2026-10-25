@@ -38,10 +38,12 @@ html, body {
   line-height: 1.5;
 }
 
-button, textarea { font: inherit; color: inherit; }
+button, textarea, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
+button:disabled { cursor: wait; opacity: 0.55; }
+a { color: #b52218; overflow-wrap: anywhere; }
 
-button:focus-visible, textarea:focus-visible {
+button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visible, summary:focus-visible {
   outline: 2px solid var(--red);
   outline-offset: 2px;
 }
@@ -136,6 +138,7 @@ button:focus-visible, textarea:focus-visible {
   width: min(1180px, calc(100% - 40px));
   margin: 24px auto 48px;
 }
+.login-layout { grid-template-columns: minmax(0, 1fr); max-width: 920px; }
 
 .sidebar, .panel, .card, .claim, .empty, .error, .skeleton, .user-card, .insight-tile {
   background: var(--paper);
@@ -144,8 +147,10 @@ button:focus-visible, textarea:focus-visible {
   box-shadow: var(--shadow);
 }
 
-.sidebar { padding: 12px; align-self: start; position: sticky; top: 92px; }
+.sidebar { padding: 12px; align-self: start; position: sticky; top: 120px; max-height: calc(100vh - 140px); overflow-y: auto; }
 .sidebar-label { margin: 4px 8px 10px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.sidebar-group + .sidebar-group { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 16px; }
+.sidebar-note { color: var(--muted); font-size: 12px; margin: 12px 8px 4px; }
 
 .company, .user-card {
   width: 100%;
@@ -277,6 +282,24 @@ button:focus-visible, textarea:focus-visible {
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { font-size: 14px; }
+.chip.selected { border-color: var(--red); background: var(--red-soft); color: #8e2018; }
+.feedback .chips { margin-top: 12px; }
+.feedback .note { margin-bottom: 0; }
+.preview-entry { display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+.preview-entry .primary { flex-shrink: 0; }
+.preview-entry .lead { margin-bottom: 0; }
+.preview-form, .form-field { display: flex; flex-direction: column; gap: 8px; }
+.preview-form { margin-top: 20px; gap: 18px; }
+.form-field label, .ask label { font-size: 14px; font-weight: 600; }
+.preview-form .primary { align-self: flex-start; }
+.preview-form input, .preview-form textarea {
+  width: 100%; min-width: 0; padding: 12px; background: white; border: 1px solid #bbbdb8; border-radius: 10px;
+}
+.preview-form textarea { resize: vertical; }
+.preview-notice, .quality-warning { background: #fff4da; border: 1px solid #e1c17c; border-radius: 12px; padding: 14px 16px; color: #684913; }
+.preview-notice p { margin: 8px 0 12px; font-size: 14px; }
+.quality-warning { font-size: 14px; }
+.claim-links { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; font-size: 13px; }
 
 .ask { display: flex; flex-direction: column; gap: 10px; }
 .ask textarea {
@@ -311,10 +334,15 @@ button:focus-visible, textarea:focus-visible {
 @media (max-width: 860px) {
   .topbar, .banner, .entry-bar { padding-left: 16px; padding-right: 16px; }
   .layout { grid-template-columns: 1fr; width: min(1180px, calc(100% - 24px)); }
-  .sidebar { position: static; display: flex; gap: 8px; overflow-x: auto; }
-  .company, .user-card { min-width: 220px; }
+  .sidebar { position: static; max-height: none; }
+  .sidebar-group { display: flex; gap: 8px; overflow-x: auto; flex-wrap: wrap; }
+  .sidebar-label, .sidebar-note { width: 100%; }
+  .company { width: auto; flex: 1 0 200px; }
+  .user-grid { grid-template-columns: 1fr; }
+  .preview-entry { flex-direction: column; align-items: flex-start; }
   .rows { grid-template-columns: 1fr; gap: 2px; }
   .rows dd { margin-bottom: 10px; }
   .nav { order: 3; width: 100%; }
   .topbar { flex-wrap: wrap; }
+  .pills { justify-content: flex-start; }
 }

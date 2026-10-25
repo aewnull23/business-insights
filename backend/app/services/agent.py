@@ -1,4 +1,5 @@
 import json
+import hashlib
 import uuid
 
 from app.config import ANALYSIS_VERSION
@@ -50,9 +51,9 @@ class BriefingAgent:
         ranked = rank_for(company, news, user)
         if len(ranked) < 1:
             mark(
-                "Повторный отбор",
+                "Оценка достаточности",
                 "Значимых совпадений нет. Пустые поля не заполняются догадкой, сводка остается пустой.",
-                "revise_search",
+                "check_evidence",
             )
         mark("Релевантность посчитана", f"В сводку вошло материалов: {len(ranked)}.", "rank")
         payload = {
@@ -69,6 +70,9 @@ class BriefingAgent:
             "omitted_count": len(news) - len(ranked),
             "items": [_card(row) for row in ranked],
             "mode": llm_status(),
+            "plan": _plan("briefing"),
+            "context": {"company_id": company_id, "user_id": user["id"] if user else None,
+                        "profile_gaps": gaps, "selected_news_ids": [row["news"]["id"] for row in ranked]},
         }
         mark("Сводка сохранена", "Промежуточный след записан в локальную базу.", "save")
         payload["trace"] = steps
@@ -78,12 +82,34 @@ class BriefingAgent:
         return payload
 
     def analyze(self, company_id: str, news_id: str, user_id: str | None = None) -> dict:
-        from app.storage.store import get_store
+        user = _resolve_user(company_id, user_id)
+        company = get_company(company_id)
+        news = _find_news(news_id)
+        if not company or not news:
+            raise NotFound(company_id if not company else news_id)
+        return self._analyze_news(company, news, user)
+
+    def preview(self, company_id: str, news: dict, user_id: str | None = None) -> dict:
+        """Analyze submitted material without adding it to the feed or analysis cache."""
+        from app.services.news_pipeline import prepare_item
 
         user = _resolve_user(company_id, user_id)
+        company = get_company(company_id)
+        if not company:
+            raise NotFound(company_id)
+        prepared = prepare_item({**news, "id": news.get("id") or "preview-" + uuid.uuid4().hex,
+                                 "origin": "user_supplied", "facts": []})
+        return self._analyze_news(company, prepared, user, persist=False)
+
+    def _analyze_news(self, company: dict, news: dict, user: dict | None, *, persist: bool = True) -> dict:
+        from app.storage.store import get_store
+
+        company_id, news_id = company["id"], news["id"]
         store = get_store()
-        version = _version(user)
-        cached = store.get_analysis(company_id, news_id, version)
+        library = list(load_documents())
+        mode = llm_status()
+        version = _version(user, company, news, library, mode)
+        cached = store.get_analysis(company_id, news_id, version) if persist else None
         if cached:
             audit.record("load_analysis", company_id=company_id, news_id=news_id, status="cache")
             return cached
@@ -95,35 +121,49 @@ class BriefingAgent:
             audit.record(tool, company_id=company_id, news_id=news_id, user_id=None if not user else user["id"])
 
         mark("Задача определена", "Нужен разбор одного сюжета для выбранной компании и роли.", "define_task")
-        company = get_company(company_id)
-        if not company:
-            audit.record("load_profile", company_id=company_id, news_id=news_id, status="missing")
-            raise NotFound(company_id)
         mark("Профиль загружен", _gap_summary(core_gaps(company)), "load_profile")
-        news = _find_news(news_id)
-        if not news:
-            audit.record("collect_news", company_id=company_id, news_id=news_id, status="missing")
-            raise NotFound(news_id)
         mark("Материал найден", origin_label(news), "collect_news")
-        documents = search_documents(news, list(load_documents()))
+        documents = search_documents(news, library)
         bank_hits = sum(1 for item in documents if item.get("is_bank_research"))
+        attempts = [{"strategy": "topics", "document_ids": [item["id"] for item in documents], "bank_hits": bank_hits}]
         mark(
             "Документы отобраны",
             f"Фрагментов библиотеки: {len(documents)}, из них аналитика банка: {bank_hits}.",
             "retrieve_documents",
         )
+        if not bank_hits:
+            expanded = search_documents(news, library, strategy="lexical")
+            attempts.append({"strategy": "lexical", "document_ids": [item["id"] for item in expanded],
+                             "bank_hits": sum(bool(item.get("is_bank_research")) for item in expanded)})
+            seen = {item["id"] for item in documents}
+            documents.extend(item for item in expanded if item["id"] not in seen)
+            mark("Поиск уточнен", f"Поиск по тексту выдержек вместо меток тем: найдено фрагментов {len(expanded)}. Нерелевантные материалы не подставляются.", "revise_search")
         view = build_analysis(company, news, documents, user)
         mark("Черновик собран", f"Сработало правил: {len(view['relevance']['reasons'])}.", "draft_analysis")
         if view["quality"]["revised"]:
             mark("Проверка полноты", "Черновику не хватало оговорки или источник был размечен слишком сильно.", "quality_check")
             mark("Результат скорректирован", "; ".join(view["quality"]["fixes"]), "revise")
-        else:
+        elif view["quality"]["passed"]:
             mark("Проверка полноты", "Оговорки и источники на месте, правка не понадобилась.", "quality_check")
-        note, accepted = _maybe_model(view)
+        if not view["quality"]["passed"]:
+            mark("Требуется проверка", "Не все проверки качества пройдены: " + ", ".join(view["quality"]["issues"]), "quality_failed")
+        note, accepted = _maybe_model(view) if view["quality"]["passed"] else ("Модель не вызвана: разбор требует проверки.", False)
         mark("Формулировка", note, "narrate" if accepted else "narrate_skipped")
-        mark("Результат сохранен", "Разбор и след записаны локально.", "save")
+        view["plan"] = _plan("analysis")
+        view["context"] = {
+            "company_id": company_id, "news_id": news_id, "user_id": user["id"] if user else None,
+            "profile_gaps": core_gaps(company), "retrieval_attempts": attempts,
+            "document_ids": [item["id"] for item in documents],
+            "source_ids": [item["id"] for item in view["sources"]],
+            "fingerprint": version,
+        }
+        view["transient"] = not persist
+        mark("Результат сохранен" if persist else "Предпросмотр готов",
+             "Разбор и след записаны локально." if persist else "Материал не добавлен в ленту и кеш разборов.",
+             "save" if persist else "preview_complete")
         view["trace"] = steps
-        store.save_analysis(company_id, news_id, version, view)
+        if persist:
+            store.save_analysis(company_id, news_id, version, view)
         return view
 
     def ask(self, company_id: str, news_id: str, question: str, user_id: str | None = None) -> dict:
@@ -154,10 +194,27 @@ def _resolve_user(company_id: str, user_id: str | None) -> dict | None:
     return default_user(company_id)
 
 
-def _version(user: dict | None) -> str:
-    if not user:
-        return ANALYSIS_VERSION
-    return f"{ANALYSIS_VERSION}:{user['id']}"
+def _version(user: dict | None, company: dict, news: dict, documents: list[dict], mode: dict) -> str:
+    packet = {"pipeline": "evidence-v3", "user": user, "company": company, "news": news,
+              "documents": documents, "mode": mode.get("mode"), "model": mode.get("model")}
+    digest = hashlib.sha256(json.dumps(packet, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:24]
+    return f"{ANALYSIS_VERSION}:{digest}"
+
+
+def _plan(task: str) -> list[dict]:
+    steps = [
+        {"tool": "load_profile", "purpose": "Проверить заполненные поля компании и роль пользователя"},
+        {"tool": "collect_news", "purpose": "Получить материал и отделить сведения источника от подтвержденных фактов"},
+    ]
+    if task == "briefing":
+        return steps + [{"tool": "deduplicate", "purpose": "Снять повторяющиеся сюжеты"},
+                        {"tool": "rank", "purpose": "Отобрать новости по профилю и роли"}]
+    return steps + [
+        {"tool": "retrieve_documents", "purpose": "Найти выдержки банка по темам события"},
+        {"tool": "revise_search", "purpose": "Повторить поиск по тексту, если банк не найден", "condition": "no_bank_hits"},
+        {"tool": "draft_analysis", "purpose": "Связать выводы с профилем, событием и документами"},
+        {"tool": "quality_check", "purpose": "Проверить происхождение, оговорки и исправить недостатки"},
+    ]
 
 
 def _find_news(news_id: str) -> dict | None:

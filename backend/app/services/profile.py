@@ -86,10 +86,10 @@ def _counterparties(company: dict) -> str | None:
         bit = row.get("name") or "контрагент"
         if row.get("role"):
             bit += f" · {row['role']}"
-        if row.get("share_of_revenue") is not None:
-            bit += f" · {format_pct(row['share_of_revenue'])} выручки"
-        if row.get("share_of_costs") is not None:
-            bit += f" · {format_pct(row['share_of_costs'])} затрат"
+        if row.get("share_of_incoming") is not None:
+            bit += f" · {format_pct(row['share_of_incoming'])} входящих платежей"
+        if row.get("share_of_outgoing") is not None:
+            bit += f" · {format_pct(row['share_of_outgoing'])} исходящих платежей"
         parts.append(bit)
     return "; ".join(parts)
 
@@ -145,6 +145,7 @@ def profile_view(company: dict) -> dict:
     rows = [
         ("Идентификатор датасета", company.get("synthetic_u")),
         ("Отрасль", company.get("industry")),
+        ("Доля рынка", "Не определена: нет объема рынка и сопоставимого периода"),
         ("ОКВЭД", _okved(company)),
         ("Тип организации", company.get("org_type")),
         ("Форма собственности", company.get("ownership")),

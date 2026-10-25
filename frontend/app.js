@@ -16,6 +16,11 @@ const state = {
   answer: null,
   answerLoading: false,
   answerError: "",
+  preview: { title: "", text: "", source_url: "", published_at: "" },
+  previewError: "",
+  feedback: null,
+  feedbackLoading: false,
+  feedbackError: "",
 };
 
 const KIND = {
@@ -43,6 +48,8 @@ const MONTHS = [
 
 const app = document.getElementById("app");
 let requestToken = 0;
+let answerToken = 0;
+let feedbackToken = 0;
 
 function h(tag, props, kids) {
   const node = document.createElement(tag);
@@ -80,11 +87,40 @@ function withUser(url) {
 async function getJson(url, options) {
   const response = await fetch(url, options);
   if (!response.ok) {
-    const error = new Error("request failed");
+    const body = await response.json().catch(() => ({}));
+    const error = new Error(typeof body.detail === "string" ? body.detail : "Ошибка запроса");
     error.status = response.status;
     throw error;
   }
   return response.json();
+}
+
+function resetDetail() {
+  answerToken += 1;
+  feedbackToken += 1;
+  state.analysis = null;
+  state.answer = null;
+  state.answerLoading = false;
+  state.answerError = "";
+  state.question = "";
+  state.feedback = null;
+  state.feedbackLoading = false;
+  state.feedbackError = "";
+}
+
+function safeSourceUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value, window.location.origin);
+    if (/^https?:\/\//i.test(value) && ["http:", "https:"].includes(url.protocol)) return url.href;
+    if (value.startsWith("/bank-pdfs/") && url.origin === window.location.origin && url.pathname.startsWith("/bank-pdfs/")) return url.href;
+  } catch (_error) { /* Invalid source addresses are displayed as text only. */ }
+  return null;
+}
+
+function sourceLink(value, label) {
+  const href = safeSourceUrl(value);
+  return href ? h("a", { href, target: "_blank", rel: "noopener noreferrer" }, [label || value]) : null;
 }
 
 function currentUser() {
@@ -121,24 +157,29 @@ async function init() {
 
 async function enter(userId, screen) {
   const token = ++requestToken;
+  const user = state.users.find((item) => item.id === userId);
+  if (!user) return;
   state.userId = userId;
+  state.companyId = user.company_id;
+  state.home = null;
+  state.company = null;
+  state.briefing = null;
+  state.screen = screen === "feed" ? "feed" : "home";
+  state.preview = { title: "", text: "", source_url: "", published_at: "" };
+  state.previewError = "";
   localStorage.setItem("insights-user", userId);
   state.loading = true;
   state.error = "";
-  state.analysis = null;
-  state.answer = null;
+  resetDetail();
   render();
   try {
-    const user = state.users.find((item) => item.id === userId);
     const home = await getJson(`/api/home?user_id=${encodeURIComponent(userId)}`);
     if (token !== requestToken) return;
     state.home = home;
-    state.companyId = user.company_id;
-    if (screen === "feed" || state.screen === "feed" || state.screen === "detail") {
+    if (screen === "feed") {
       await loadInsights(false);
       if (token !== requestToken) return;
-      if (state.screen === "detail" && state.analysis) state.screen = "detail";
-      else state.screen = "feed";
+      state.screen = "feed";
     } else {
       state.screen = "home";
     }
@@ -156,7 +197,7 @@ async function loadInsights(shouldRender = true) {
   const token = requestToken;
   const id = state.companyId;
   const [company, briefing] = await Promise.all([
-    getJson(`/api/companies/${id}`),
+    getJson(withUser(`/api/companies/${id}`)),
     getJson(withUser(`/api/companies/${id}/briefing`), { method: "POST" }),
   ]);
   if (token !== requestToken) return;
@@ -166,8 +207,11 @@ async function loadInsights(shouldRender = true) {
 }
 
 async function openHome() {
+  requestToken += 1;
   state.screen = "home";
-  state.analysis = null;
+  state.loading = false;
+  state.error = "";
+  resetDetail();
   render();
   window.scrollTo(0, 0);
 }
@@ -175,8 +219,7 @@ async function openHome() {
 async function openInsights() {
   const token = ++requestToken;
   state.screen = "feed";
-  state.analysis = null;
-  state.answer = null;
+  resetDetail();
   state.loading = true;
   state.error = "";
   render();
@@ -207,16 +250,15 @@ async function selectCompany(id) {
 async function openNews(id) {
   const token = ++requestToken;
   state.screen = "detail";
-  state.analysis = null;
-  state.answer = null;
-  state.answerError = "";
-  state.question = "";
+  resetDetail();
   state.loading = true;
   state.error = "";
   render();
   window.scrollTo(0, 0);
   try {
-    state.analysis = await getJson(withUser(`/api/companies/${state.companyId}/news/${id}`));
+    const analysis = await getJson(withUser(`/api/companies/${state.companyId}/news/${id}`));
+    if (token !== requestToken) return;
+    state.analysis = analysis;
   } catch (_error) {
     if (token !== requestToken) return;
     state.error = "Не удалось открыть разбор события.";
@@ -232,8 +274,8 @@ async function openNews(id) {
 function backToFeed() {
   requestToken += 1;
   state.screen = "feed";
-  state.analysis = null;
-  state.answer = null;
+  resetDetail();
+  state.loading = false;
   state.error = "";
   render();
   window.scrollTo(0, 0);
@@ -245,17 +287,23 @@ function logout() {
   state.userId = "";
   state.home = null;
   state.company = null;
+  state.companyId = null;
   state.briefing = null;
-  state.analysis = null;
+  resetDetail();
+  state.loading = false;
+  state.error = "";
   state.screen = "login";
   render();
 }
 
 async function submitQuestion(question) {
+  if (!state.analysis || state.analysis.transient || state.answerLoading) return;
+  const pageToken = requestToken;
+  const token = ++answerToken;
   const text = (question ?? state.question).trim();
   state.question = text;
-  if (text.length < 3) {
-    state.answerError = "Вопрос должен быть не короче 3 символов.";
+  if (text.length < 3 || text.length > 500) {
+    state.answerError = "Вопрос должен содержать от 3 до 500 символов.";
     state.answer = null;
     render();
     return;
@@ -264,7 +312,7 @@ async function submitQuestion(question) {
   state.answerError = "";
   render();
   try {
-    state.answer = await getJson(
+    const answer = await getJson(
       withUser(`/api/companies/${state.companyId}/news/${state.analysis.news_id}/questions`),
       {
         method: "POST",
@@ -272,11 +320,89 @@ async function submitQuestion(question) {
         body: JSON.stringify({ question: text }),
       },
     );
+    if (pageToken !== requestToken || token !== answerToken) return;
+    state.answer = answer;
   } catch (_error) {
-    state.answerError = "Не удалось получить ответ. Попробуйте еще раз.";
+    if (pageToken === requestToken && token === answerToken) state.answerError = "Не удалось получить ответ. Попробуйте еще раз.";
   } finally {
-    state.answerLoading = false;
+    if (pageToken === requestToken && token === answerToken) {
+      state.answerLoading = false;
+      render();
+    }
+  }
+}
+
+function openPreview() {
+  requestToken += 1;
+  resetDetail();
+  state.screen = "preview";
+  state.loading = false;
+  state.error = "";
+  state.previewError = "";
+  render();
+  window.scrollTo(0, 0);
+}
+
+async function submitPreview() {
+  if (state.loading) return;
+  const body = Object.fromEntries(Object.entries(state.preview).map(([key, value]) => [key, value.trim()]));
+  if (body.title.length < 5 || body.title.length > 300 || body.text.length < 20 || body.text.length > 12000) {
+    state.previewError = "Укажите заголовок от 5 до 300 символов и текст от 20 до 12 000 символов.";
     render();
+    return;
+  }
+  if (body.source_url && (!/^https?:\/\//i.test(body.source_url) || !safeSourceUrl(body.source_url))) {
+    state.previewError = "Ссылка на источник должна начинаться с http:// или https://.";
+    render();
+    return;
+  }
+  const date = new Date(`${body.published_at}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(body.published_at) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== body.published_at) {
+    state.previewError = "Укажите корректную дату публикации.";
+    render();
+    return;
+  }
+  body.source_url = body.source_url || null;
+  const token = ++requestToken;
+  state.loading = true;
+  state.previewError = "";
+  render();
+  try {
+    const analysis = await getJson(withUser(`/api/companies/${state.companyId}/preview`), {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (token !== requestToken) return;
+    state.analysis = { ...analysis, transient: true };
+    state.screen = "detail";
+  } catch (_error) {
+    if (token === requestToken) state.previewError = "Не удалось разобрать новость. Проверьте введенные данные и повторите попытку.";
+  } finally {
+    if (token === requestToken) {
+      state.loading = false;
+      render();
+    }
+  }
+}
+
+async function submitFeedback(rating) {
+  if (!state.analysis || state.analysis.transient || state.feedbackLoading) return;
+  const pageToken = requestToken;
+  const token = ++feedbackToken;
+  state.feedbackLoading = true;
+  state.feedbackError = "";
+  render();
+  try {
+    await getJson(withUser(`/api/companies/${state.companyId}/news/${state.analysis.news_id}/feedback`), {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rating, comment: "" }),
+    });
+    if (pageToken === requestToken && token === feedbackToken) state.feedback = rating;
+  } catch (_error) {
+    if (pageToken === requestToken && token === feedbackToken) state.feedbackError = "Не удалось сохранить оценку. Попробуйте еще раз.";
+  } finally {
+    if (pageToken === requestToken && token === feedbackToken) {
+      state.feedbackLoading = false;
+      render();
+    }
   }
 }
 
@@ -289,9 +415,9 @@ function render() {
       h("p", { class: "banner" }, [
         state.status?.data_note || "Демонстрационный контур интернет-банка. Это не промышленный Альфа-Бизнес.",
       ]),
-      h("div", { class: "layout" }, [
+      h("div", { class: `layout${state.screen === "login" ? " login-layout" : ""}` }, [
         state.screen === "login" ? null : sidebar(),
-        h("main", { class: "main" }, mainBlocks()),
+        h("main", { class: "main", id: "main", "aria-busy": state.loading ? "true" : "false" }, mainBlocks()),
       ]),
     ]),
   );
@@ -307,8 +433,8 @@ function topbar(user) {
       ]),
     ]),
     user ? h("nav", { class: "nav" }, [
-      h("button", { class: `nav-btn${state.screen === "home" ? " active" : ""}`, type: "button", onclick: openHome }, ["Главная"]),
-      h("button", { class: `nav-btn insights${state.screen === "feed" || state.screen === "detail" ? " active" : ""}`, type: "button", onclick: openInsights }, ["Инсайты"]),
+      h("button", { class: `nav-btn${state.screen === "home" ? " active" : ""}`, type: "button", disabled: !state.home, onclick: openHome }, ["Главная"]),
+      h("button", { class: `nav-btn insights${["feed", "detail", "preview"].includes(state.screen) ? " active" : ""}`, type: "button", disabled: !state.home, onclick: openInsights }, ["Инсайты"]),
     ]) : null,
     h("div", { class: "pills" }, [
       ...(state.status ? [
@@ -322,36 +448,38 @@ function topbar(user) {
 }
 
 function persistentEntry() {
-  if (state.screen === "feed" || state.screen === "detail") return null;
-  return h("button", { class: "entry-bar", type: "button", onclick: openInsights }, [
+  if (["feed", "detail", "preview"].includes(state.screen)) return null;
+  return h("button", { class: "entry-bar", type: "button", disabled: !state.home, onclick: openInsights }, [
     h("strong", {}, ["Новостная аналитика"]),
     h("span", {}, ["Постоянная точка входа: события, факты, позиция банка и выводы AI"]),
   ]);
 }
 
 function sidebar() {
-  if (state.screen === "home") {
-    const sameCompany = state.users.filter((item) => item.company_id === state.companyId);
-    return h("aside", { class: "sidebar" }, [
+  const sameCompany = state.users.filter((item) => item.company_id === state.companyId);
+  const availableCompanies = state.companies.filter((company) => state.users.some((user) => user.company_id === company.id));
+  return h("aside", { class: "sidebar", "aria-label": "Выбор роли и компании" }, [
+    h("div", { class: "sidebar-group" }, [
       h("p", { class: "sidebar-label" }, ["Роли этой компании"]),
       ...sameCompany.map((user) =>
         h("button", {
           class: `company${user.id === state.userId ? " active" : ""}`,
           type: "button",
-          onclick: () => enter(user.id, "home"),
+          "aria-pressed": user.id === state.userId ? "true" : "false",
+          onclick: () => enter(user.id, state.screen === "home" ? "home" : "feed"),
         }, [
           h("strong", {}, [user.role]),
           h("span", {}, [user.display_name]),
         ]),
       ),
-    ]);
-  }
-  return h("aside", { class: "sidebar" }, [
-    h("p", { class: "sidebar-label" }, ["Компании крупного бизнеса"]),
-    ...state.companies.map((company) =>
+    ]),
+    h("div", { class: "sidebar-group" }, [
+    h("p", { class: "sidebar-label" }, ["Доступные тестовые компании"]),
+    ...availableCompanies.map((company) =>
       h("button", {
         class: `company${company.id === state.companyId ? " active" : ""}`,
         type: "button",
+        "aria-pressed": company.id === state.companyId ? "true" : "false",
         onclick: () => selectCompany(company.id),
       }, [
         h("strong", {}, [company.name]),
@@ -361,6 +489,8 @@ function sidebar() {
         ]),
       ]),
     ),
+    h("p", { class: "sidebar-note" }, [`В наборе ${state.companies.length} компаний крупного бизнеса. Демо-вход настроен для ${availableCompanies.length}.`]),
+    ]),
   ]);
 }
 
@@ -382,6 +512,7 @@ function mainBlocks() {
   }
   if (state.screen === "login") return loginBlocks();
   if (state.screen === "home") return homeBlocks();
+  if (state.screen === "preview") return previewBlocks();
   if (state.screen === "detail" && state.analysis) return detailBlocks();
   return feedBlocks();
 }
@@ -442,7 +573,10 @@ function homeBlocks() {
 
 function feedBlocks() {
   if (!state.company || !state.briefing) return [];
-  const blocks = [profilePanel()];
+  const blocks = [profilePanel(), h("section", { class: "panel preview-entry" }, [
+    h("div", {}, [h("h3", {}, ["Проверить свою новость"]), h("p", { class: "lead" }, ["Добавьте текст события и получите разбор для своей компании и роли."])]),
+    h("button", { class: "primary", type: "button", onclick: openPreview }, ["Проверить новость"]),
+  ])];
   if (state.briefing.user?.role) {
     blocks.push(h("p", { class: "note" }, [`Сводка собрана для роли: ${state.briefing.user.role}.`]));
   }
@@ -478,6 +612,30 @@ function profilePanel() {
   ]);
 }
 
+function previewBlocks() {
+  const field = (name, label, props, tag = "input") => {
+    const input = h(tag, { id: `preview-${name}`, name, ...props, oninput: (event) => { state.preview[name] = event.target.value; } });
+    input.value = state.preview[name];
+    return h("div", { class: "form-field" }, [h("label", { for: `preview-${name}` }, [label]), input]);
+  };
+  return [
+    h("div", {}, [h("button", { class: "back", type: "button", onclick: backToFeed }, ["← К сводке"])]),
+    h("section", { class: "panel" }, [
+      h("h2", {}, ["Проверить свою новость"]),
+      h("p", { class: "lead" }, [`Разбор для ${state.company?.name || state.home?.company?.name || "вашей компании"}, роль: ${currentUser()?.role || "не указана"}.`]),
+      h("p", { class: "note" }, ["Предварительный разбор не сохраняется в общую ленту. Сведения из вашего текста не считаются подтвержденными фактами; ссылка указывается для происхождения материала."]),
+      h("form", { class: "preview-form", onsubmit: (event) => { event.preventDefault(); submitPreview(); } }, [
+        field("title", "Заголовок", { type: "text", required: true, minlength: "5", maxlength: "300", placeholder: "От 5 до 300 символов" }),
+        field("text", "Текст новости", { required: true, minlength: "20", maxlength: "12000", rows: "8", placeholder: "Вставьте текст материала — от 20 до 12 000 символов" }, "textarea"),
+        field("source_url", "Ссылка на первоисточник (необязательно)", { type: "url", maxlength: "2000", placeholder: "https://..." }),
+        field("published_at", "Дата публикации", { type: "date", required: true }),
+        state.previewError ? h("p", { class: "error", role: "alert" }, [state.previewError]) : null,
+        h("button", { class: "primary", type: "submit" }, ["Получить предварительный разбор"]),
+      ]),
+    ]),
+  ];
+}
+
 function newsCard(item) {
   const level = item.relevance.level;
   return h("button", {
@@ -500,16 +658,26 @@ function newsCard(item) {
 function detailBlocks() {
   const analysis = state.analysis;
   const level = analysis.relevance.level;
+  const sections = analysis.sections || [];
+  const sourceSections = sections.filter((section) => ["happened", "confirmed", "source_facts"].includes(section.id));
+  const bankSections = sections.filter((section) => section.id === "bank");
+  const remainingSections = sections.filter((section) => !["happened", "confirmed", "source_facts", "bank"].includes(section.id));
   return [
     h("div", {}, [h("button", { class: "back", type: "button", onclick: backToFeed }, ["← К сводке"])]),
+    analysis.transient ? h("div", { class: "preview-notice", role: "status" }, [
+      h("strong", {}, ["Предварительный разбор вашей новости"]),
+      h("p", {}, ["Материал предоставлен пользователем. Его достоверность не подтверждена. Разбор не добавлен в общую ленту; уточняющие вопросы и оценка здесь недоступны."]),
+      h("button", { class: "chip", type: "button", onclick: openPreview }, ["Изменить текст новости"]),
+    ]) : null,
     h("section", { class: "panel" }, [
       h("div", { class: "meta" }, [
         h("span", {}, [formatDate(analysis.published_at)]),
         h("span", { class: "tag" }, [analysis.category || "Событие"]),
-        h("span", { class: "tag" }, [analysis.origin_label]),
+        h("span", { class: "tag" }, [analysis.origin_label || (analysis.origin === "user_supplied" ? "Материал пользователя" : "Источник не указан")]),
         h("span", { class: `score ${levelClass(level)}` }, [`${percent(analysis.relevance.score)} · ${level}`]),
       ]),
       h("h2", {}, [analysis.title]),
+      sourceLink(analysis.source_url, "Открыть первоисточник ↗"),
       h("p", { class: "note" }, [analysis.generation?.note || ""]),
       h("div", { class: "legend" }, [
         h("span", { class: "badge kind-source" }, ["Факт источника"]),
@@ -519,12 +687,15 @@ function detailBlocks() {
       ]),
       qualityLine(analysis.quality),
     ]),
+    ...sourceSections.map(renderSection),
+    ...bankSections.map(renderSection),
     ...(analysis.generation?.narrative ? [h("section", { class: "claim kind-ai" }, [
       h("header", {}, [h("span", { class: "badge" }, ["Текст модели"])]),
       h("p", {}, [analysis.generation.narrative]),
     ])] : []),
-    ...analysis.sections.map(renderSection),
-    questionPanel(),
+    ...remainingSections.map(renderSection),
+    analysis.transient ? null : questionPanel(),
+    analysis.transient ? null : feedbackPanel(),
     sourcesPanel(analysis.sources || []),
     trace(analysis.trace, "Как получен вывод"),
   ];
@@ -532,16 +703,15 @@ function detailBlocks() {
 
 function qualityLine(quality) {
   if (!quality) return null;
-  const text = quality.revised
-    ? `Проверка скорректировала результат. ${(quality.fixes || []).join(" ")}`
-    : "Проверка полноты пройдена, правка не понадобилась.";
-  return h("p", { class: "note" }, [text]);
+  let text = quality.passed === true ? "Автоматическая проверка полноты пройдена. Это не внешняя проверка достоверности." : "Автоматическая проверка полноты не пройдена. Выводы требуют проверки.";
+  if (quality.revised) text += ` Проверка скорректировала результат. ${(quality.fixes || []).join(" ")}`;
+  return h("p", { class: quality.passed === true ? "note" : "quality-warning" }, [text]);
 }
 
 function renderSection(section) {
   const body = [];
   if (section.lead) body.push(h("p", { class: "lead" }, [section.lead]));
-  if (!section.items.length) {
+  if (!section.items?.length) {
     body.push(h("div", { class: "empty" }, [section.empty || "В этом блоке нет данных."]));
   } else {
     section.items.forEach((item) => body.push(renderClaim(item)));
@@ -558,6 +728,8 @@ function renderClaim(item) {
   kids.push(h("p", {}, [item.text]));
   if (item.note) kids.push(h("p", { class: "note" }, [item.note]));
   if (item.basis_labels?.length) kids.push(h("p", { class: "basis" }, [`Основания: ${item.basis_labels.join(" · ")}`]));
+  const relatedSources = (state.analysis?.sources || []).filter((source) => item.basis?.includes(source.id) && safeSourceUrl(source.url));
+  if (relatedSources.length) kids.push(h("div", { class: "claim-links" }, relatedSources.map((source) => sourceLink(source.url, source.title))));
   return h("article", { class: `claim kind-${kind}` }, kids);
 }
 
@@ -566,10 +738,11 @@ function questionPanel() {
     h("h3", {}, ["Уточнить по этому событию"]),
     h("p", { class: "lead" }, ["Ответ берется из профиля и уже собранного разбора. Если данных нет, сервис так и скажет."]),
     h("div", { class: "chips" }, PROMPTS.map((prompt) =>
-      h("button", { class: "chip", type: "button", onclick: () => submitQuestion(prompt) }, [prompt]),
+      h("button", { class: "chip", type: "button", disabled: state.answerLoading, onclick: () => submitQuestion(prompt) }, [prompt]),
     )),
-    h("textarea", { name: "question", maxlength: "500", placeholder: "Например: какая выручка указана в профиле?" }, []),
-    h("button", { class: "primary", type: "submit" }, [state.answerLoading ? "Собираем ответ…" : "Спросить"]),
+    h("label", { for: "followup-question" }, ["Ваш вопрос"]),
+    h("textarea", { id: "followup-question", name: "question", required: true, minlength: "3", maxlength: "500", disabled: state.answerLoading, placeholder: "Например: какая выручка указана в профиле?" }, []),
+    h("button", { class: "primary", type: "submit", disabled: state.answerLoading }, [state.answerLoading ? "Собираем ответ…" : "Спросить"]),
   ]);
   form.querySelector("textarea").value = state.question;
   form.querySelector("textarea").addEventListener("input", (event) => {
@@ -580,10 +753,26 @@ function questionPanel() {
   if (state.answer) kids.push(renderClaim({
     kind: state.answer.kind,
     text: state.answer.answer,
+      basis: state.answer.basis,
     basis_labels: state.answer.basis_labels,
     note: state.answer.generation?.mode === "llm" ? "Формулировку сжала модель." : "Ответ собран без вызова модели.",
   }));
   return h("section", { class: "section" }, kids);
+}
+
+function feedbackPanel() {
+  return h("section", { class: "panel feedback" }, [
+    h("h3", {}, ["Был ли разбор полезен?"]),
+    h("div", { class: "chips" }, [
+      ...[[1, "Полезно"], [-1, "Не полезно"]].map(([rating, label]) => h("button", {
+        class: `chip${state.feedback === rating ? " selected" : ""}`, type: "button",
+        disabled: state.feedbackLoading, "aria-pressed": state.feedback === rating ? "true" : "false",
+        onclick: () => submitFeedback(rating),
+      }, [label])),
+    ]),
+    h("p", { class: "note", role: "status" }, [state.feedbackLoading ? "Сохраняем оценку…" : state.feedback ? "Спасибо, оценка сохранена." : "Ваша оценка поможет улучшить подбор и объяснение событий."]),
+    state.feedbackError ? h("p", { class: "error", role: "alert" }, [state.feedbackError]) : null,
+  ]);
 }
 
 function sourcesPanel(sources) {
@@ -593,7 +782,7 @@ function sourcesPanel(sources) {
       h("div", { class: "source" }, [
         h("strong", {}, [source.title]),
         h("span", { class: "note" }, [source.note || ""]),
-        source.url ? h("a", { href: source.url, target: "_blank", rel: "noreferrer" }, [source.url]) : null,
+        sourceLink(source.url),
       ]),
     )),
   ]);

@@ -21,6 +21,8 @@ class Company(BaseModel):
     okved: str | None = None
     okved_name: str | None = None
     revenue_rub: int | None = None
+    market_share: float | None = None
+    market_share_status: str = "unknown"
     business_size: str | None = None
     large_business: bool = False
     include_incomplete: bool = False
@@ -72,6 +74,16 @@ class Document(BaseModel):
     source_url: str | None = None
     topics: list[str] = Field(default_factory=list)
     text: str
+    document_id: str | None = None
+    source_file: str | None = None
+    source_sha256: str | None = None
+    page_start: int | None = None
+    page_end: int | None = None
+    page_count: int | None = None
+    extracted_pages: int | None = None
+    extraction_status: str = "provided"
+    ingestion_message: str | None = None
+    published_at: str | None = None
 
 
 class UserAccount(BaseModel):

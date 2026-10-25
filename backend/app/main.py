@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
-from app.config import settings
+from app.config import DATA_DIR, settings
 
 LOGGER = logging.getLogger("app")
 DESCRIPTION = """
@@ -20,12 +20,22 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Альфа-Бизнес · Новостная аналитика",
         description=DESCRIPTION,
-        version="1.1.0",
+        version="1.2.0",
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
     )
     app.include_router(router, prefix="/api", tags=["insights"])
+    # Expose only the research corpus, never profiles, payments or the runtime database.
+    @app.get("/bank-pdfs/{filename}", include_in_schema=False)
+    def bank_pdf(filename: str):
+        from fastapi.responses import FileResponse
+
+        root = (DATA_DIR / "bank_pdfs").resolve()
+        target = (root / filename).resolve()
+        if target.parent != root or target.suffix.lower() != ".pdf" or not target.is_file():
+            raise HTTPException(status_code=404, detail="document not found")
+        return FileResponse(target, media_type="application/pdf")
 
     @app.exception_handler(Exception)
     async def unhandled(_request, exc):

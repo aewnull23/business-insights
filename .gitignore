@@ -5,4 +5,6 @@ __pycache__/
 .env
 backend/runtime/*.sqlite
 backend/runtime/*.sqlite-*
+backend/runtime/*.log
+backend/runtime/pdf-preview/
 .DS_Store

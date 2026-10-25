@@ -75,21 +75,28 @@ def safe_fallback(draft: dict) -> dict:
     fixed = copy.deepcopy(draft)
     for key in ("consequences", "risks", "opportunities", "why"):
         fixed[key] = [claim for claim in fixed[key] if claim.get("basis")]
-    if "не найден" not in fixed["bank"]["message"].lower() and not fixed["bank"]["items"]:
+    if not fixed["bank"]["items"]:
         fixed["bank"] = {"found": False, "message": BANK_ABSENT, "items": []}
+    if "debt_service" in fixed["fired_rule_ids"] and not any("структуре долга" in text.lower() for text in fixed["unknowns"]):
+        fixed["unknowns"].append(DEBT_UNKNOWN)
+    for claim in _claims(fixed):
+        if has_certainty(claim.get("text") or ""):
+            claim["text"] = hedge(claim["text"])
+    fixed["unknowns"] = [hedge(text) if has_certainty(text) else text for text in fixed["unknowns"]]
     fixed["unknowns"].append("Часть формулировок снята проверкой качества, потому что к ним не было надежного источника.")
     return fixed
 
 
 def narrative_is_grounded(narrative: str, source_text: str, bank_found: bool) -> bool:
-    if not narrative:
+    if not isinstance(narrative, str) or not narrative.strip() or has_certainty(narrative):
         return False
-    if not bank_found and "альфа-банк" in narrative.lower():
+    if not bank_found and re.search(r"альфа[\s-]*банк|(?:банк|банковск\w* аналитик\w*)\s+(?:счита|прогноз|ожида|оценива)", narrative, re.I):
         return False
-    compact_source = source_text.replace(" ", "").replace("\u00a0", "")
+    def normalize_number(value: str) -> str:
+        return re.sub(r"\s", "", value).replace(",", ".")
+    source_numbers = {normalize_number(value) for value in NUMBER_RE.findall(source_text)}
     for number in NUMBER_RE.findall(narrative):
-        compact = number.replace(" ", "").replace("\u00a0", "")
-        if compact not in compact_source and number not in source_text:
+        if normalize_number(number) not in source_numbers:
             return False
     return True
 

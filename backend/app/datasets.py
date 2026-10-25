@@ -1,5 +1,6 @@
 import csv
 import json
+from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 
 from app.config import DATA_DIR, LARGE_BUSINESS_REVENUE
@@ -99,32 +100,36 @@ def _unique(ids: list[str], label: str) -> None:
 
 
 def _flag(value: str) -> bool | None:
-    if value == "":
-        return None
-    cleaned = value.replace(",", ".").strip()
+    cleaned = value.strip().lower().replace(",", ".")
+    if cleaned in {"true", "да", "yes"}:
+        return True
+    if cleaned in {"false", "нет", "no"}:
+        return False
     try:
-        return float(cleaned) != 0
-    except ValueError:
-        return cleaned.lower() in {"true", "да", "yes"}
+        number = Decimal(cleaned)
+        if number.is_finite() and number in (0, 1):
+            return bool(number)
+    except InvalidOperation:
+        pass
+    return None
 
 
 def _number(value: str) -> int | None:
     if value == "":
         return None
-    cleaned = value.replace(" ", "").replace(",", ".")
+    cleaned = "".join(value.split()).replace(",", ".")
     try:
-        return int(float(cleaned))
-    except ValueError:
+        number = Decimal(cleaned)
+        return int(number) if number.is_finite() else None
+    except (ValueError, InvalidOperation, OverflowError):
         return None
 
 
 def _workers(value: str) -> int | None:
-    if not value:
-        return None
-    digits = "".join(ch if ch.isdigit() else " " for ch in value).split()
-    if not digits:
-        return None
-    return int(digits[0])
+    # A range or 'more than 251' is not an exact headcount. Preserve the original
+    # category in workers_fns/workers_spark instead of reporting its lower bound.
+    cleaned = value.strip().replace(' ', '')
+    return int(cleaned) if cleaned.isdecimal() else None
 
 
 def _products(row: dict[str, str], extra: list[str] | None) -> list[str] | None:
@@ -209,16 +214,29 @@ def _shared_persons(uid: str, labels: dict) -> list[dict]:
 
 
 def _counterparties(uid: str, revenue: int | None, labels: dict) -> list[dict] | None:
+    # Payment flows are not accounting revenue or expenses. Denominators include
+    # every known payment in the same direction, before the display limit.
+    payments = [row for row in load_pay_index().get(uid, ())
+                if not (row['BENEFICIARY'] == uid and row['PAYER'] == uid)]
+    totals = {"share_of_incoming": 0, "share_of_outgoing": 0}
+    complete = {key: True for key in totals}
+    for item in payments:
+        key = "share_of_incoming" if item["BENEFICIARY"] == uid else "share_of_outgoing"
+        amount = _number(item["PAY_AMT"])
+        if amount is None or amount < 0:
+            complete[key] = False
+        else:
+            totals[key] += amount
     rows = []
-    for item in load_pay_index().get(uid, ()):
+    for item in payments:
         if item["BENEFICIARY"] == uid:
             other = item["PAYER"]
             role = "покупатель"
-            share_key = "share_of_revenue"
+            share_key = "share_of_incoming"
         elif item["PAYER"] == uid:
             other = item["BENEFICIARY"]
             role = "поставщик"
-            share_key = "share_of_costs"
+            share_key = "share_of_outgoing"
         else:
             continue
         amount = _number(item["PAY_AMT"])
@@ -231,8 +249,8 @@ def _counterparties(uid: str, revenue: int | None, labels: dict) -> list[dict] |
             "pay_amt": amount,
             "pay_cnt": _number(item["PAY_CNT"]),
         }
-        if amount is not None and revenue:
-            row[share_key] = round(amount / revenue, 4)
+        if amount is not None and amount >= 0 and complete[share_key] and totals[share_key]:
+            row[share_key] = round(amount / totals[share_key], 4)
         rows.append(row)
     rows.sort(key=lambda item: item.get("pay_amt") or 0, reverse=True)
     return rows[:8] or None
@@ -256,6 +274,8 @@ def _company(row: dict[str, str], labels: dict) -> dict:
         "okved": row["MAINOKVED_CODE"] or None,
         "okved_name": row["MAINOKVED_NAME"] or None,
         "revenue_rub": revenue,
+        "market_share": None,
+        "market_share_status": "unknown",
         "business_size": "крупный" if revenue is not None and revenue > LARGE_BUSINESS_REVENUE else ("ниже порога кейса" if revenue is not None else None),
         "large_business": bool(revenue is not None and revenue > LARGE_BUSINESS_REVENUE),
         "include_incomplete": bool(label.get("include_incomplete")),
@@ -449,7 +469,16 @@ def load_news_seed() -> tuple[dict, ...]:
 
 @lru_cache(maxsize=1)
 def load_documents() -> tuple[dict, ...]:
-    rows = [Document.model_validate(item).model_dump() for item in _read_json("documents.json")]
+    from app.sources.bank_pdf import ingest_bank_pdfs
+
+    imported = ingest_bank_pdfs(DATA_DIR / "bank_pdfs")
+    imported_ids = {row["document_id"] for row in imported}
+    # documents.json supplies catalog metadata for the bundled PDFs, never
+    # substitutes handwritten summaries for extracted source passages.
+    supplied = _read_json("documents.json") if (DATA_DIR / "documents.json").exists() else []
+    supplemental = [item for item in supplied if item["id"] not in imported_ids
+                    and item.get("origin") != "case_packet"]
+    rows = [Document.model_validate(item).model_dump() for item in imported + supplemental]
     _unique([row["id"] for row in rows], "документах")
     return tuple(rows)
 

@@ -27,7 +27,9 @@ def build_analysis(company: dict, news: dict, documents: list[dict], user: dict 
             draft = safe_fallback(draft)
             fixes.append("Повторная проверка сняла оставшиеся слабые формулировки.")
     view = _present(company, news, draft, fired, user)
-    view["quality"] = {"passed": True, "revised": revised, "fixes": fixes}
+    remaining = check(draft)
+    view["quality"] = {"passed": not remaining, "revised": revised, "fixes": fixes,
+                       "initial_issues": issues, "issues": remaining}
     return view
 
 
@@ -37,6 +39,8 @@ def origin_label(news: dict) -> str:
         return "Демонстрационный сюжет, не живая лента"
     if origin == "rss":
         return "Внешняя RSS-лента, текст не проверялся редакцией"
+    if origin == "user_supplied":
+        return "Материал пользователя, сведения не проверены независимо"
     return "Материал из подключенного источника"
 
 
@@ -65,6 +69,9 @@ def _draft(company: dict, news: dict, documents: list[dict], fired: list[dict]) 
                     "title": document["title"],
                     "kind": "bank",
                     "basis": [f"doc:{document['id']}"],
+                    "source_url": document.get("source_url"),
+                    "document": document,
+                    "note": _document_note(document),
                 }
                 for document in bank_docs
             ],
@@ -99,6 +106,27 @@ def _draft(company: dict, news: dict, documents: list[dict], fired: list[dict]) 
             if text not in seen:
                 draft["unknowns"].append(text)
                 seen.add(text)
+    # Bank research changes the checks proposed to this company. The interpretation
+    # stays AI-labelled and references both the exact excerpt and profile rule.
+    for document in bank_docs:
+        if document.get("historical"):
+            draft["unknowns"].append(f"Материал «{document['title']}» опубликован {document['published_at']}. Он показан как исторический контекст и не подтверждает текущую оценку банка.")
+            continue
+        document_topics = document.get("topics") or (news.get("topics") if document.get("strategy") == "lexical" else [])
+        matching = [rule for rule in fired if set(rule.get("topics") or []).intersection(document_topics or [])]
+        if not matching:
+            continue
+        rule = matching[0]
+        actions = rule["effect"].get("actions") or []
+        if not actions:
+            continue
+        draft["actions"].append({
+            "text": f"{actions[0]} Сверьте результат этой проверки с контекстом материала «{document['title']}»: «{document['excerpt']}». Применимость этого контекста к текущим условиям компании нужно подтвердить отдельно.",
+            "kind": "ai",
+            "basis": _basis(company, news, rule["id"]) + [f"doc:{document['id']}"],
+            "note": "Применение банковского материала к профилю — вывод AI. Дата и условия исследования могут отличаться от текущего события; эффект на компанию требует проверки.",
+            "source_excerpt": document["excerpt"],
+        })
     return draft
 
 
@@ -117,15 +145,14 @@ def _present(company: dict, news: dict, draft: dict, fired: list[dict], user: di
                     "basis_labels": [titles.get(item, item) for item in claim.get("basis") or []],
                     "title": claim.get("title"),
                     "note": claim.get("note"),
+                    "source_excerpt": claim.get("source_excerpt"),
                 }
             )
         return shown
 
     document_items = []
     for document in draft["documents"]:
-        if document.get("is_bank_research"):
-            note = "Материал аналитики банка по приложению 2 кейса. Полный PDF в пакете отсутствовал; карточка собрана по названию и формулировкам файла кейса."
-        elif document.get("origin") == "demonstration":
+        if document.get("origin") == "demonstration":
             note = "Демонстрационная справка. Не является аналитикой Альфа-Банка."
         else:
             note = "Фрагмент из подключенной библиотеки."
@@ -214,6 +241,19 @@ def _section(section_id: str, title: str, items: list[dict], empty: str | None =
     return {"id": section_id, "title": title, "lead": lead, "empty": empty, "items": items}
 
 
+def _document_note(document: dict) -> str:
+    notes = []
+    if document.get('published_at'):
+        notes.append('Дата исследования: ' + document['published_at'] + '.')
+    else:
+        notes.append('Точная дата публикации не определена.')
+    if document.get('historical'):
+        notes.append('Исторический материал: не является текущей оценкой события банком.')
+    if document.get('extraction_status') == 'ocr':
+        notes.append('Текст распознан OCR; возможны ошибки, особенно в числах. Сверяйте с указанной страницей PDF.')
+    return ' '.join(notes)
+
+
 def _basis(company: dict, news: dict, rule_id: str) -> list[str]:
     values = [f"profile:{company['id']}", f"news:{news['id']}", f"rule:{rule_id}"]
     values.extend(f"fact:{fact['id']}" for fact in news.get("facts") or [])
@@ -261,7 +301,7 @@ def _sources(company: dict, news: dict, draft: dict, fired: list[dict]) -> list[
             }
         )
     for document in list(draft["documents"]) + [
-        {"id": item["basis"][0].split(":", 1)[1], "title": item.get("title"), "source_url": None, "is_bank_research": True}
+        item.get("document") or {"id": item["basis"][0].split(":", 1)[1], "title": item.get("title"), "source_url": item.get("source_url"), "is_bank_research": True}
         for item in draft["bank"]["items"]
         if item.get("basis")
     ]:
@@ -271,7 +311,8 @@ def _sources(company: dict, news: dict, draft: dict, fired: list[dict]) -> list[
                 "title": document.get("title") or document["id"],
                 "kind": "bank_document" if document.get("is_bank_research") else "demonstration_document",
                 "url": document.get("source_url"),
-                "note": "Материал библиотеки.",
+                "note": _document_note(document),
+                **{key: document.get(key) for key in ("source_file", "page_start", "page_end", "extraction_status", "document_id", "published_at", "historical")},
             }
         )
     return rows

@@ -157,7 +157,7 @@ def _metal_revenue(company: dict, news: dict) -> dict:
     if money:
         consequences.append(f"Выручка {money} показывает масштаб компании, но не долю цены в контрактах. Переносить {move} на эту сумму нельзя.")
     return _pack(
-        "Отрасль компании — металлургия, сюжет о цене стали",
+        f"Отрасль компании — {company.get('industry')}, сюжет о цене стали",
         attributes,
         consequences,
         ["Давление на выручку возможно только для незафиксированных продаж. Это гипотеза, а не следствие, доказанное источником."],
@@ -171,8 +171,8 @@ def _metal_revenue(company: dict, news: dict) -> dict:
 def _metal_scrap(company: dict, news: dict) -> dict:
     row = _find_counterparty(company, "лом") or {}
     name = row.get("name") or "поставщик лома"
-    share = format_pct(row.get("share_of_costs")) if row.get("share_of_costs") is not None else None
-    share_text = f" Доля в затратах по профилю — {share}." if share else ""
+    share = format_pct(row.get("share_of_outgoing")) if row.get("share_of_outgoing") is not None else None
+    share_text = f" Доля исходящих платежей в выгрузке — {share}; это не доля затрат." if share else ""
     return _pack(
         f"В профиле есть поставщик лома: {name}",
         [f"Контрагент «{name}», роль: поставщик.{share_text}"],
@@ -180,7 +180,7 @@ def _metal_scrap(company: dict, news: dict) -> dict:
         ["Маржа может сжаться или расшириться. Направление по двум ценам из имеющихся данных не определяется."],
         ["Если цена лома снижается вместе с ценой стали, сырье может дешеветь. Это гипотеза: индекса лома в сюжете нет."],
         ["Сравнить закупочную цену лома и цену реализации. В профиле этой пары цен нет."],
-        ["Цена лома и полная доля в себестоимости, кроме доли контрагента, не раскрыты."],
+        ["Цена лома и доля в себестоимости не раскрыты. Платежи не равны расходам бухгалтерского учета."],
     )
 
 
@@ -221,9 +221,9 @@ def _cny_export(company: dict, news: dict) -> dict:
 def _auto_demand(company: dict, news: dict) -> dict:
     row = _find_counterparty(company, "авто") or {}
     name = row.get("name") or "покупатель из автопрома"
-    share = format_pct(row.get("share_of_revenue")) if row.get("share_of_revenue") is not None else None
+    share = format_pct(row.get("share_of_incoming")) if row.get("share_of_incoming") is not None else None
     move = "9%" if _has(news, "9%") else "изменение выпуска из сюжета"
-    share_bit = f" В профиле на него приходится {share} выручки." if share else ""
+    share_bit = f" На него приходится {share} входящих платежей в выгрузке; это не доля выручки." if share else ""
     return _pack(
         f"Покупатель «{name}» связывает компанию с автопромом",
         [f"Контрагент «{name}», роль: покупатель.{share_bit}"],
@@ -387,16 +387,18 @@ def _retail(company: dict, news: dict) -> dict:
     move = "1%" if _has(news, "1%") else "отраслевой темп"
     money = format_money(company.get("revenue_rub"))
     attributes = ["Отрасль: розничная торговля."]
+    if company.get('okved_name'):
+        attributes.append('Вид деятельности: ' + company['okved_name'] + '.')
     if money:
         attributes.append(f"Выручка профиля: {money}. Она не заменяет сопоставимые продажи сети.")
     return _pack(
-        "Отрасль компании — продовольственная розница",
+        "Розничная торговля в профиле связывает событие со спросом; товарный сегмент нужно сопоставить отдельно",
         attributes,
-        [f"Замедление оборота продовольственной розницы относится к отрасли компании. Показатель {move} нельзя переносить на выручку сети."],
-        ["Сопоставимые продажи могут замедлиться, если сеть похожа на среднюю по рынку. Это не установлено."],
+        [f"Изменение спроса в розничной торговле может быть ориентиром при планировании продаж. Показатель {move} нельзя переносить на выручку компании: ее товарный сегмент и сегмент новости могут различаться."],
+        ["Риск отклонения продаж оценивается только после проверки сопоставимости товарного сегмента, региона и периода."],
         [],
         ["Сравнить собственные сопоставимые продажи с отраслевой цифрой. Такого показателя в профиле нет."],
-        ["Нет сопоставимых продаж и структуры ассортимента."],
+        ["Нет сопоставимых продаж и структуры ассортимента. Сюжет о продовольствии не устанавливает спрос на одежду, топливо или другие товары."],
     )
 
 

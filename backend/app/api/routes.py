@@ -1,10 +1,13 @@
 import re
+import hashlib
 
 from fastapi import APIRouter, HTTPException, Query
 
 from app.datasets import dataset_counts, load_companies, load_documents, load_fid_rows, load_pay_rows, load_uid_rows
 from app.providers.llm import llm_status
 from app.schemas import QuestionIn
+from app.api.inputs import FeedbackIn, PreviewIn
+from app.services.news_pipeline import prepare_item
 from app.services.agent import BriefingAgent, Forbidden, NotFound
 from app.services.profile import excluded_companies, get_company, list_public, profile_view
 from app.services.users import get_user, home_view, list_users
@@ -49,11 +52,16 @@ def status() -> dict:
         "companies": len(load_companies()),
         "workspace_companies": len(list_public()),
         "documents": len(documents),
-        "bank_documents": sum(1 for item in documents if item["is_bank_research"]),
+        "bank_documents": len({item.get("document_id") or item["id"] for item in documents if item["is_bank_research"] and item.get("text")}),
+        "bank_chunks": sum(1 for item in documents if item["is_bank_research"] and item.get("text")),
+        "bank_ingestion_issues": [
+            {"file": item.get("source_file"), "status": item.get("extraction_status"), "message": item.get("ingestion_message")}
+            for item in documents if item.get("extraction_status") in {"ocr_required", "extraction_error"}
+        ],
         "uid_rows": len(load_uid_rows()),
         "fid_rows": len(load_fid_rows()),
         "pay_rows": len(load_pay_rows()),
-        "data_note": "Профили собраны из оригинальных df_Uid_data_hack.csv, df_Fid_Uid_link_hack.csv и df_Uid_payment_hack.csv. Названия компаний не раскрываются.",
+        "data_note": "Демонстрационный сервис для крупного бизнеса. Профили компаний обезличены; учебные новости отмечены отдельно.",
     }
 
 
@@ -100,12 +108,61 @@ def companies() -> dict:
 
 
 @router.get("/companies/{company_id}")
-def company(company_id: str) -> dict:
+def company(company_id: str, user_id: str | None = None) -> dict:
     parse_id(company_id)
+    _check_access(company_id, user_id)
     found = get_company(company_id)
     if not found:
         raise HTTPException(status_code=404, detail="company not found")
     return profile_view(found)
+
+
+def _check_access(company_id: str, user_id: str | None) -> dict | None:
+    if user_id is None:
+        return None  # Public, anonymized demonstration mode; production requires bank SSO.
+    user = get_user(parse_id(user_id))
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+    if user["company_id"] != company_id:
+        raise HTTPException(status_code=403, detail="user does not belong to company")
+    return user
+
+
+@router.post("/companies/{company_id}/preview")
+def preview(company_id: str, body: PreviewIn, user_id: str | None = None) -> dict:
+    parse_id(company_id)
+    _check_access(company_id, user_id)
+    fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()[:24]
+    news = prepare_item({
+        "id": "preview-" + fingerprint,
+        "title": body.title,
+        "summary": body.text,
+        "published_at": body.published_at.isoformat(),
+        "source_url": str(body.source_url) if body.source_url else None,
+        "source_name": "Материал пользователя",
+        "origin": "user_supplied",
+        "category": "Новый материал",
+        "demo": False,
+    })
+    try:
+        result = AGENT.preview(company_id, news, _user_id(user_id))
+        result["transient"] = True
+        return result
+    except Forbidden:
+        raise HTTPException(status_code=403, detail="user does not belong to company") from None
+    except NotFound:
+        raise HTTPException(status_code=404, detail="company not found") from None
+
+
+@router.post("/companies/{company_id}/news/{news_id}/feedback")
+def feedback(company_id: str, news_id: str, body: FeedbackIn, user_id: str = Query(...)) -> dict:
+    parse_id(company_id)
+    parse_id(news_id)
+    _check_access(company_id, user_id)
+    if not get_company(company_id) or not any(item["id"] == news_id for item in collect_news()[0]):
+        raise HTTPException(status_code=404, detail="not found")
+    get_store().save_feedback(company_id, news_id, user_id, body.rating, body.comment.strip())
+    return {"saved": True, "rating": body.rating}
 
 
 @router.post("/companies/{company_id}/briefing")
@@ -135,6 +192,8 @@ def analysis(company_id: str, news_id: str, user_id: str | None = None) -> dict:
 def ask(company_id: str, news_id: str, body: QuestionIn, user_id: str | None = None) -> dict:
     parse_id(company_id)
     parse_id(news_id)
+    if len(body.question.strip()) < 3:
+        raise HTTPException(status_code=422, detail="question is too short")
     try:
         return AGENT.ask(company_id, news_id, body.question.strip(), _user_id(user_id))
     except Forbidden:

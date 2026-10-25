@@ -48,6 +48,15 @@ class Store:
                     status TEXT NOT NULL,
                     user_id TEXT
                 );
+                CREATE TABLE IF NOT EXISTS feedback (
+                    company_id TEXT NOT NULL,
+                    news_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    rating INTEGER NOT NULL CHECK(rating IN (-1, 1)),
+                    comment TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY(company_id, news_id, user_id)
+                );
                 """
             )
             self.conn.commit()
@@ -113,6 +122,14 @@ class Store:
             )
             self.conn.commit()
 
+    def save_feedback(self, company_id: str, news_id: str, user_id: str, rating: int, comment: str) -> None:
+        with self.lock:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO feedback VALUES (?, ?, ?, ?, ?, ?)",
+                (company_id, news_id, user_id, rating, comment[:1000], _now()),
+            )
+            self.conn.commit()
+
     def metrics(self) -> dict:
         with self.lock:
             tools = self.conn.execute(
@@ -121,10 +138,29 @@ class Store:
             questions = self.conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
             analyses = self.conn.execute("SELECT COUNT(*) FROM analyses").fetchone()[0]
             runs = self.conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+            payloads = self.conn.execute("SELECT payload FROM analyses").fetchall()
+            ratings = self.conn.execute("SELECT rating, COUNT(*) AS n FROM feedback GROUP BY rating").fetchall()
+        reviewed = [json.loads(row["payload"]) for row in payloads]
+        covered = sum(bool(row.get("bank_found")) for row in reviewed)
+        revised = sum(bool(row.get("quality", {}).get("revised")) for row in reviewed)
+        failed = sum(not row.get("quality", {}).get("passed", False) for row in reviewed)
+        positive = sum(row["n"] for row in ratings if row["rating"] == 1)
+        feedback_count = sum(row["n"] for row in ratings)
         return {
             "runs": runs,
             "analyses": analyses,
             "questions": questions,
+            "content_quality": {
+                "sample_size": len(reviewed),
+                "bank_coverage_rate": covered / len(reviewed) if reviewed else None,
+                "revision_rate": revised / len(reviewed) if reviewed else None,
+                "failed_checks": failed,
+            },
+            "feedback": {
+                "count": feedback_count,
+                "positive": positive,
+                "helpful_rate": positive / feedback_count if feedback_count else None,
+            },
             "tool_calls": [
                 {"tool": row["tool"], "status": row["status"], "count": row["n"]} for row in tools
             ],

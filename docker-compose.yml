@@ -6,3 +6,14 @@ services:
     environment:
       APP_ENV: demo
       LOG_LEVEL: INFO
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_MAX_CALLS: ${LLM_MAX_CALLS:-8}
+      NEWS_FEED_URLS: ${NEWS_FEED_URLS:-}
+      DATABASE_PATH: /app/backend/runtime/insights.sqlite
+    volumes:
+      - insights-data:/app/backend/runtime
+
+volumes:
+  insights-data:
